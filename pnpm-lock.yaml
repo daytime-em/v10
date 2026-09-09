@@ -390,9 +390,6 @@ importers:
       '@types/react':
         specifier: ^19.2.0
         version: 19.2.14
-      del-cli:
-        specifier: ^7.0.0
-        version: 7.0.0
       react:
         specifier: 19.2.3
         version: 19.2.3
@@ -402,9 +399,6 @@ importers:
       react-native-builder-bob:
         specifier: ^0.43.0
         version: 0.43.0
-      turbo:
-        specifier: ^2.10.8
-        version: 2.10.12
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -4085,19 +4079,9 @@ packages:
     peerDependencies:
       '@testing-library/dom': '>=7.21.4'
 
-  '@turbo/darwin-64@2.10.12':
-    resolution: {integrity: sha512-9nKgKoF6ZOUsM+or0OtNf+TTJSfGvDNP7ZFv/ZGWVwOSCkumyctQiTeHwB4UNljHTnC41AqylgbunLDHoccNrA==}
-    cpu: [x64]
-    os: [darwin]
-
   '@turbo/darwin-64@2.9.1':
     resolution: {integrity: sha512-d1zTcIf6VWT7cdfjhi0X36C2PRsUi2HdEwYzVgkLHmuuYtL+1Y1Zu3JdlouoB/NjG2vX3q4NnKLMNhDOEweoIg==}
     cpu: [x64]
-    os: [darwin]
-
-  '@turbo/darwin-arm64@2.10.12':
-    resolution: {integrity: sha512-H4Elb1jqTZVeIC9bbcNwjSzemZ6RegoTOVHeuV5Osirt2Z8UguTyisMEkvZjPVZgMeN9J4ERZBFad40tFnkb7w==}
-    cpu: [arm64]
     os: [darwin]
 
   '@turbo/darwin-arm64@2.9.1':
@@ -4105,39 +4089,19 @@ packages:
     cpu: [arm64]
     os: [darwin]
 
-  '@turbo/linux-64@2.10.12':
-    resolution: {integrity: sha512-lr7KIotukvjZwEXiFSYAeOH3BWzjFVBbSzTbv0fuGFsNukYyH0+g1hB5ecqnJkgkYU+KHEMG1edOhnjiKON1wQ==}
-    cpu: [x64]
-    os: [android, linux]
-
   '@turbo/linux-64@2.9.1':
     resolution: {integrity: sha512-HT9SjKkjEw9uvlgly/qwCGEm4wOXOwQPSPS+wkg+/O1Qan3F1uU/0PFYzxl3m4lfuV3CP9wr2Dq5dPrUX+B9Ag==}
     cpu: [x64]
     os: [linux]
-
-  '@turbo/linux-arm64@2.10.12':
-    resolution: {integrity: sha512-f0pZDTtvzB5SuNwuXBaKbZHUCMCukgc8nMlHEuvLmj91Fzec+MEbr3cAvGNor5htEDqZnO6Lxt9N/GPI/77oGA==}
-    cpu: [arm64]
-    os: [android, linux]
 
   '@turbo/linux-arm64@2.9.1':
     resolution: {integrity: sha512-+4s5GZs3kjxc1KMhLBhoQy4UBkXjOhgidA9ipNllkA4JLivSqUCuOgU1Xbyp6vzYrsqHJ9vvwo/2mXgEtD6ZHg==}
     cpu: [arm64]
     os: [linux]
 
-  '@turbo/windows-64@2.10.12':
-    resolution: {integrity: sha512-SDOueJRjS/QcykWf2KCRtTLmIl5YMKsLbXkXQGhDwcTXvKXZiS5ih5lBl/gkwZIpYFjqA/rAlfMzlAFcVHNe0g==}
-    cpu: [x64]
-    os: [win32]
-
   '@turbo/windows-64@2.9.1':
     resolution: {integrity: sha512-ZO7GCyQd5HV564XWHc9KysjanFfM3DmnWquyEByu+hQMq42g9OMU/fYOCfHS6Xj2aXkIg2FHJeRV+iAck2YrbQ==}
     cpu: [x64]
-    os: [win32]
-
-  '@turbo/windows-arm64@2.10.12':
-    resolution: {integrity: sha512-0i0mVUa4kKk+/B3RwEwPMf9CB+T7ul56hn5FFHNA4VUNTOoLBEd6aNf3FaKfCatDNZ6cicCEf6if9QUTVyzzcA==}
-    cpu: [arm64]
     os: [win32]
 
   '@turbo/windows-arm64@2.9.1':
@@ -5347,11 +5311,6 @@ packages:
 
   defu@6.1.7:
     resolution: {integrity: sha512-7z22QmUWiQ/2d0KkdYmANbRUVABpZ9SNYyH5vx6PZ+nE5bcC0l7uFvEfHlyld/HcGBFTL536ClDt3DEcSlEJAQ==}
-
-  del-cli@7.0.0:
-    resolution: {integrity: sha512-fRl4pWJYu9WFQH8jXdQUYvcD0IMtij9WEc7qmB7xOyJEweNJNuE7iKmqNeoOT1DbBUjtRjxlw8Y63qKBI/NQ1g==}
-    engines: {node: '>=18'}
-    hasBin: true
 
   del@8.0.1:
     resolution: {integrity: sha512-gPqh0mKTPvaUZGAuHbrBUYKZWBNAeHG7TU3QH5EhVwPMyKvmfJaNXhcD2jTcXsJRRcffuho4vaYweu80dRrMGA==}
@@ -6990,10 +6949,6 @@ packages:
   meow@13.2.0:
     resolution: {integrity: sha512-pxQJQzB6djGPXh08dacEloMFopsOqGVRKFPYvPOt9XDZ1HasbgDZA74CJGreSU4G3Ak7EFJGoiH2auq+yXISgA==}
     engines: {node: '>=18'}
-
-  meow@14.1.0:
-    resolution: {integrity: sha512-EDYo6VlmtnumlcBCbh1gLJ//9jvM/ndXHfVXIFrZVr6fGcwTUyCTFNTLCKuY3ffbK8L/+3Mzqnd58RojiZqHVw==}
-    engines: {node: '>=20'}
 
   merge-options@3.0.4:
     resolution: {integrity: sha512-2Sug1+knBjkaMsMgf1ctR1Ujx+Ayku4EdJN4Z+C2+JzoeF7A3OZ9KM2GY0CpQS51NR61LTurMJrRKPhSs3ZRTQ==}
@@ -8677,10 +8632,6 @@ packages:
   tunnel@0.0.6:
     resolution: {integrity: sha512-1h/Lnq9yajKY2PEbBadPXj3VxsDDu844OnaAo52UVmIzIvwwtBPIuNvkjuzBlTWpfJyUbG3ez0KSBibQkj4ojg==}
     engines: {node: '>=0.6.11 <=0.7.0 || >=0.7.3'}
-
-  turbo@2.10.12:
-    resolution: {integrity: sha512-AswgMPnpOoaVZHrrSBejETzEbuIA69OVGwfkHwfrY0A23VjWXBANzgq9+OymWOHAIArB7D1+1z498WY8fGg1Jw==}
-    hasBin: true
 
   turbo@2.9.1:
     resolution: {integrity: sha512-TO9du8MwLTAKoXcGezekh9cPJabJUb0+8KxtpMR6kXdRASrmJ8qXf2GkVbCREgzbMQakzfNcux9cZtxheDY4RQ==}
@@ -13081,37 +13032,19 @@ snapshots:
     dependencies:
       '@testing-library/dom': 10.4.1
 
-  '@turbo/darwin-64@2.10.12':
-    optional: true
-
   '@turbo/darwin-64@2.9.1':
-    optional: true
-
-  '@turbo/darwin-arm64@2.10.12':
     optional: true
 
   '@turbo/darwin-arm64@2.9.1':
     optional: true
 
-  '@turbo/linux-64@2.10.12':
-    optional: true
-
   '@turbo/linux-64@2.9.1':
-    optional: true
-
-  '@turbo/linux-arm64@2.10.12':
     optional: true
 
   '@turbo/linux-arm64@2.9.1':
     optional: true
 
-  '@turbo/windows-64@2.10.12':
-    optional: true
-
   '@turbo/windows-64@2.9.1':
-    optional: true
-
-  '@turbo/windows-arm64@2.10.12':
     optional: true
 
   '@turbo/windows-arm64@2.9.1':
@@ -14602,12 +14535,6 @@ snapshots:
       object-keys: 1.1.1
 
   defu@6.1.7: {}
-
-  del-cli@7.0.0:
-    dependencies:
-      del: 8.0.1
-      meow: 14.1.0
-      presentable-error: 0.0.1
 
   del@8.0.1:
     dependencies:
@@ -16602,8 +16529,6 @@ snapshots:
   meow@12.1.1: {}
 
   meow@13.2.0: {}
-
-  meow@14.1.0: {}
 
   merge-options@3.0.4:
     dependencies:
@@ -18739,15 +18664,6 @@ snapshots:
       fsevents: 2.3.3
 
   tunnel@0.0.6: {}
-
-  turbo@2.10.12:
-    optionalDependencies:
-      '@turbo/darwin-64': 2.10.12
-      '@turbo/darwin-arm64': 2.10.12
-      '@turbo/linux-64': 2.10.12
-      '@turbo/linux-arm64': 2.10.12
-      '@turbo/windows-64': 2.10.12
-      '@turbo/windows-arm64': 2.10.12
 
   turbo@2.9.1:
     optionalDependencies:

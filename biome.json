@@ -157,6 +157,7 @@
       "!**/build/AGENTS.md",
       "!**/build/agents",
       "!**/dist",
+      "!**/lib",
       "!**/examples",
       "!**/packages/html/cdn",
       "!**/styles/vjs.css",

@@ -19,6 +19,7 @@
         "@videojs/html",
         "@videojs/icons",
         "@videojs/react",
+        "@videojs/react-native",
         "@videojs/skins",
         "@videojs/spf",
         "@videojs/store",
@@ -59,6 +60,12 @@
     },
     "packages/react": {
       "component": "@videojs/react",
+      "prerelease": true,
+      "prerelease-type": "beta",
+      "versioning": "prerelease"
+    },
+    "packages/react-native": {
+      "component": "@videojs/react-native",
       "prerelease": true,
       "prerelease-type": "beta",
       "versioning": "prerelease"
