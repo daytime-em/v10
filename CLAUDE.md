@@ -20,10 +20,11 @@ Refer to **[`CONTRIBUTING.md`](./CONTRIBUTING.md)** for setup, development, and 
 | `packages/skins`        | Shared skin CSS and Tailwind tokens (private).                      |
 | `packages/html`         | Web player—DOM/Browser‑specific implementation.                     |
 | `packages/react`        | React player—adapts core state to React components.                 |
-| `packages/react-native` | React Native player (planned, not yet implemented).                 |
+| `packages/react-native` | React Native player (Fabric native view scaffolding, in progress).  |
 | `packages/cli`          | `@videojs/cli` — CLI for reading docs, and more in the future.      |
 | `apps/sandbox`          | Vite‑based dev playground (private, not published).                  |
 | `apps/e2e`              | Playwright end‑to‑end and visual snapshot tests (private).          |
+| `apps/react-native`     | React Native dev app for `packages/react-native` (private).         |
 | `site/`                 | Astro‑based docs and website.                                       |
 
 ### Dependency Hierarchy
@@ -50,7 +51,7 @@ skins           ← shared skin CSS (private)
 
 html            ← Web player (DOM/Browser)
 react           ← React player
-react-native    ← React Native player (planned, not yet implemented)
+react-native    ← React Native player (Fabric native view scaffolding, in progress)
 ```
 
 ```text
@@ -78,6 +79,8 @@ pnpm dev
 # Typecheck across repo (fast - uses TypeScript project references)
 # Always run from root, not per-package
 pnpm typecheck
+# Exception: apps/react-native is outside the root project-reference graph
+pnpm -F @videojs/react-native-example typecheck
 
 # Build all packages/apps
 pnpm build
