@@ -1,5 +1,5 @@
-import { SeekIndicatorValueElement } from '../../ui/seek-indicator/seek-indicator-value-element';
-import { safeDefine } from '../safe-define';
+import { safeDefine } from '../../registration/safe-define';
+import { SeekIndicatorValueElement } from '../../ui/seek-indicator/value';
 
 safeDefine(SeekIndicatorValueElement);
 

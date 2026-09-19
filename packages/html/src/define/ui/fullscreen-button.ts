@@ -1,5 +1,5 @@
-import { FullscreenButtonElement } from '../../ui/fullscreen-button/fullscreen-button-element';
-import { safeDefine } from '../safe-define';
+import { safeDefine } from '../../registration/safe-define';
+import { FullscreenButtonElement } from '../../ui/fullscreen-button/element';
 
 safeDefine(FullscreenButtonElement);
 

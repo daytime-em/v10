@@ -1,7 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
+
 import { snapshot } from '../../../../core/signals/primitives';
 import type { PartiallyResolvedAudioTrack, PartiallyResolvedVideoTrack, Presentation } from '../../../../media/types';
-import { createSimpleHlsEngine } from '../engine';
+import { createHlsVideoEngine } from '../engine';
 
 // Mock appendSegment to succeed without real MP4 data
 vi.mock('../../../../media/dom/mse/append-segment', () => ({
@@ -17,10 +18,11 @@ function unmockedFetchFallback(url: string): Promise<Response> {
   // Non-empty body: `fetchStream` throws "Response has no body" on a null body
   // (empty Uint8Array), which would itself trip the monitor.
   if (/\.(m4s|mp4|ts|aac)(\?|$)/.test(url)) return Promise.resolve(new Response(new Uint8Array([0])));
+
   return Promise.reject(new Error(`Unmocked URL: ${url}`));
 }
 
-describe('createSimpleHlsEngine', () => {
+describe('createHlsVideoEngine', () => {
   let originalFetch: typeof globalThis.fetch;
   let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
@@ -39,9 +41,11 @@ describe('createSimpleHlsEngine', () => {
     originalFetch = globalThis.fetch;
 
     const originalConsoleError = console.error.bind(console);
+
     consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
       const text = args.map((a) => (typeof a === 'string' ? a : String(a))).join(' ');
       if (expectedErrorPatterns.some((p) => p.test(text))) return;
+
       originalConsoleError(...args);
     });
   });
@@ -52,7 +56,7 @@ describe('createSimpleHlsEngine', () => {
     consoleErrorSpy.mockRestore();
   });
   it('creates engine with state, owners, and destroy', () => {
-    const engine = createSimpleHlsEngine();
+    const engine = createHlsVideoEngine();
 
     expect(engine.state).toBeDefined();
     expect(engine.context).toBeDefined();
@@ -63,7 +67,7 @@ describe('createSimpleHlsEngine', () => {
   });
 
   it('initializes state with seeded bandwidthState and behavior-supplied defaults', () => {
-    const engine = createSimpleHlsEngine();
+    const engine = createHlsVideoEngine();
 
     // Composition creates one signal per declared key. ABR machinery is
     // seeded via `initialState` with an empty BandwidthState. `preload` is
@@ -91,6 +95,7 @@ describe('createSimpleHlsEngine', () => {
     });
 
     const contextSnapshot = snapshot(engine.context);
+
     expect(Object.values(contextSnapshot).every((v) => v === undefined)).toBe(true);
 
     engine.destroy();
@@ -98,7 +103,7 @@ describe('createSimpleHlsEngine', () => {
 
   it('publishes the CDN list and keeps the video selection on the primary (redundant-stream source)', async () => {
     const flush = () => Promise.resolve().then(() => Promise.resolve());
-    const engine = createSimpleHlsEngine();
+    const engine = createHlsVideoEngine();
 
     const videoTrack = (id: string, host: string): PartiallyResolvedVideoTrack => ({
       type: 'video',
@@ -156,7 +161,7 @@ describe('createSimpleHlsEngine', () => {
     // `aud-a`, NOT the parse-order `aud-b`. This pins the type-priority ordering,
     // not a manifest/parse-order coincidence.
     const flush = () => Promise.resolve().then(() => Promise.resolve());
-    const engine = createSimpleHlsEngine();
+    const engine = createHlsVideoEngine();
 
     const videoTrack = (id: string, host: string): PartiallyResolvedVideoTrack => ({
       type: 'video',
@@ -224,7 +229,7 @@ describe('createSimpleHlsEngine', () => {
 
   it('fails over video and audio to the next CDN when one is marked failed', async () => {
     const flush = () => Promise.resolve().then(() => Promise.resolve());
-    const engine = createSimpleHlsEngine();
+    const engine = createHlsVideoEngine();
 
     const videoTrack = (id: string, host: string): PartiallyResolvedVideoTrack => ({
       type: 'video',
@@ -301,7 +306,7 @@ describe('createSimpleHlsEngine', () => {
     const flush = () => Promise.resolve().then(() => Promise.resolve());
     // Reject HEVC; accept everything else.
     const canPlayTrack = (track: { codecs?: string[] }) => !track.codecs?.some((c) => c.startsWith('hvc1'));
-    const engine = createSimpleHlsEngine({ canPlayTrack });
+    const engine = createHlsVideoEngine({ canPlayTrack });
 
     const videoTrack = (id: string, codec: string): PartiallyResolvedVideoTrack => ({
       type: 'video',
@@ -338,9 +343,61 @@ describe('createSimpleHlsEngine', () => {
     engine.destroy();
   });
 
+  it('reports playlist conditions through an overridden reporter', async () => {
+    // Same default-with-override shape as `canPlayTrack` / `resolveTextTrackSegment`.
+    // A composition that ships no MPEG-TS, or wants a different vocabulary, replaces
+    // the reporter rather than living with the built-in checks.
+    const reportUnsupportedTrackConditions = () => [{ code: 99001, message: 'custom' }];
+    const engine = createHlsVideoEngine({ reportUnsupportedTrackConditions });
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(
+      async () =>
+        new Response(`#EXTM3U
+#EXT-X-TARGETDURATION:4
+#EXT-X-MAP:URI="init.mp4"
+#EXTINF:4.0,
+0.m4s
+#EXT-X-ENDLIST`)
+    );
+
+    engine.state.presentation.set({
+      id: 'pres-report',
+      url: 'https://example.com/master.m3u8',
+      startTime: 0,
+      selectionSets: [
+        {
+          id: 'v',
+          type: 'video',
+          switchingSets: [
+            {
+              id: 'vs',
+              type: 'video',
+              tracks: [
+                {
+                  type: 'video',
+                  id: 'v1',
+                  codecs: ['avc1.640028'],
+                  url: 'https://example.com/v1.m3u8',
+                  bandwidth: 1_000_000,
+                  mimeType: 'video/mp4',
+                } as PartiallyResolvedVideoTrack,
+              ],
+            },
+          ],
+        },
+      ],
+    } as Presentation);
+
+    await vi.waitFor(() => {
+      expect(engine.state.errors.get()?.map((error) => error.code)).toEqual([99001]);
+    });
+
+    engine.destroy();
+  });
+
   it('makes no video pick when no rendition is decodable', async () => {
     const flush = () => Promise.resolve().then(() => Promise.resolve());
-    const engine = createSimpleHlsEngine({ canPlayTrack: () => false });
+    const engine = createHlsVideoEngine({ canPlayTrack: () => false });
 
     engine.state.presentation.set({
       id: 'pres-unsupported',
@@ -377,12 +434,13 @@ describe('createSimpleHlsEngine', () => {
   });
 
   it('auto-fails-over when a CDN fetch fails (monitor trips, failedCdns set)', async () => {
-    const engine = createSimpleHlsEngine({ failover: { cooldownMs: 60_000 } });
+    const engine = createHlsVideoEngine({ failover: { cooldownMs: 60_000 } });
 
     // cdn-a is down (media-playlist fetch rejects); cdn-b serves a valid playlist.
     globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : String((input as Request).url ?? input);
       if (url.includes('cdn-a')) throw new TypeError('cdn-a unreachable');
+
       return new Response('#EXTM3U\n#EXT-X-TARGETDURATION:10\n#EXTINF:10.0,\nseg-1.m4s\n#EXT-X-ENDLIST');
     }) as typeof fetch;
 
@@ -430,11 +488,12 @@ describe('createSimpleHlsEngine', () => {
     // host, so origin-based identity would see ONE CDN (no redundancy); the
     // custom resolver must be respected at every site for failover to work.
     const getCdnId = (url: string) => new URL(url).searchParams.get('cdn') ?? url;
-    const engine = createSimpleHlsEngine({ getCdnId, failover: { cooldownMs: 60_000 } });
+    const engine = createHlsVideoEngine({ getCdnId, failover: { cooldownMs: 60_000 } });
 
     globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : String((input as Request).url ?? input);
       if (url.includes('cdn=a')) throw new TypeError('cdn-a unreachable');
+
       return new Response('#EXTM3U\n#EXT-X-TARGETDURATION:10\n#EXTINF:10.0,\nseg-1.m4s\n#EXT-X-ENDLIST');
     }) as typeof fetch;
 
@@ -472,9 +531,10 @@ describe('createSimpleHlsEngine', () => {
   });
 
   it('allows patching state and owners from outside', async () => {
-    const engine = createSimpleHlsEngine();
+    const engine = createHlsVideoEngine();
 
     const mediaElement = document.createElement('video');
+
     mediaElement.preload = 'auto';
     engine.context.mediaElement.set(mediaElement);
     engine.state.presentation.set({ url: 'https://example.com/playlist.m3u8' });
@@ -490,7 +550,7 @@ describe('createSimpleHlsEngine', () => {
   });
 
   it('accepts custom configuration', () => {
-    const engine = createSimpleHlsEngine({
+    const engine = createHlsVideoEngine({
       initialBandwidth: 3_000_000,
       preferredAudioLanguage: 'es',
     });
@@ -502,14 +562,14 @@ describe('createSimpleHlsEngine', () => {
   });
 
   it('cleans up all orchestrations on destroy', () => {
-    const engine = createSimpleHlsEngine();
+    const engine = createHlsVideoEngine();
 
     // Should not throw
     expect(() => engine.destroy()).not.toThrow();
   });
 
   it('can be destroyed multiple times safely', () => {
-    const engine = createSimpleHlsEngine();
+    const engine = createHlsVideoEngine();
 
     engine.destroy();
 
@@ -548,9 +608,10 @@ http://example.com/segment1.m4s
       // Fallback for unmocked URLs
       return unmockedFetchFallback(url);
     });
+
     globalThis.fetch = mockFetch;
 
-    const engine = createSimpleHlsEngine();
+    const engine = createHlsVideoEngine();
 
     // Patch state to trigger presentation resolution
     engine.state.presentation.set({ url: 'http://example.com/playlist.m3u8' });
@@ -560,6 +621,7 @@ http://example.com/segment1.m4s
     await vi.waitFor(
       () => {
         const { presentation } = snapshot(engine.state);
+
         expect(presentation?.selectionSets).toBeDefined();
         expect(presentation?.selectionSets?.length).toBeGreaterThan(0);
       },
@@ -616,10 +678,12 @@ http://example.com/audio-seg1.m4s
 
       return unmockedFetchFallback(url);
     });
+
     globalThis.fetch = mockFetch;
 
-    const engine = createSimpleHlsEngine();
+    const engine = createHlsVideoEngine();
     const mediaElement = document.createElement('video');
+
     mediaElement.preload = 'auto';
 
     // Initialize: patch owners and state
@@ -646,6 +710,7 @@ http://example.com/audio-seg1.m4s
         const videoTrack = state.presentation?.selectionSets
           ?.find((s: any) => s.type === 'video')
           ?.switchingSets?.[0]?.tracks?.find((t: any) => t.id === state.selectedVideoTrackId);
+
         expect(videoTrack).toBeDefined();
         expect(videoTrack?.segments).toBeDefined(); // Track resolved (has segments)
 
@@ -654,6 +719,7 @@ http://example.com/audio-seg1.m4s
         const audioTrack = state.presentation?.selectionSets
           ?.find((s: any) => s.type === 'audio')
           ?.switchingSets?.[0]?.tracks?.find((t: any) => t.id === state.selectedAudioTrackId);
+
         expect(audioTrack).toBeDefined();
         expect(audioTrack?.segments).toBeDefined(); // Track resolved (has segments)
 
@@ -700,6 +766,7 @@ http://example.com/audio-seg1.m4s
 http://example.com/video-a.m3u8`)
         );
       }
+
       if (url.includes('video-a.m3u8')) {
         return Promise.resolve(
           new Response(`#EXTM3U
@@ -711,6 +778,7 @@ http://example.com/video-a-seg1.m4s
 #EXT-X-ENDLIST`)
         );
       }
+
       if (url.includes('audio-a.m3u8')) {
         return Promise.resolve(
           new Response(`#EXTM3U
@@ -722,6 +790,7 @@ http://example.com/audio-a-seg1.m4s
 #EXT-X-ENDLIST`)
         );
       }
+
       if (url.includes('playlist-b.m3u8')) {
         return Promise.resolve(
           new Response(`#EXTM3U
@@ -731,6 +800,7 @@ http://example.com/audio-a-seg1.m4s
 http://example.com/video-b.m3u8`)
         );
       }
+
       if (url.includes('video-b.m3u8')) {
         return Promise.resolve(
           new Response(`#EXTM3U
@@ -742,6 +812,7 @@ http://example.com/video-b-seg1.m4s
 #EXT-X-ENDLIST`)
         );
       }
+
       if (url.includes('audio-b.m3u8')) {
         return Promise.resolve(
           new Response(`#EXTM3U
@@ -756,10 +827,12 @@ http://example.com/audio-b-seg1.m4s
 
       return unmockedFetchFallback(url);
     });
+
     globalThis.fetch = mockFetch;
 
-    const engine = createSimpleHlsEngine();
+    const engine = createHlsVideoEngine();
     const mediaElement = document.createElement('video');
+
     mediaElement.preload = 'auto';
 
     engine.context.mediaElement.set(mediaElement);
@@ -771,6 +844,7 @@ http://example.com/audio-b-seg1.m4s
       () => {
         const state = snapshot(engine.state);
         const owners = snapshot(engine.context);
+
         expect(state.presentation?.url).toBe('http://example.com/playlist-a.m3u8');
         expect(state.presentation?.id).toBeDefined();
         expect(state.selectedVideoTrackId).toBeDefined();
@@ -851,10 +925,12 @@ http://example.com/video-seg1.m4s
 
       return unmockedFetchFallback(url);
     });
+
     globalThis.fetch = mockFetch;
 
-    const engine = createSimpleHlsEngine();
+    const engine = createHlsVideoEngine();
     const mediaElement = document.createElement('video');
+
     mediaElement.preload = 'auto';
 
     engine.context.mediaElement.set(mediaElement);
@@ -915,10 +991,12 @@ http://example.com/audio-seg1.m4s
 
       return unmockedFetchFallback(url);
     });
+
     globalThis.fetch = mockFetch;
 
-    const engine = createSimpleHlsEngine();
+    const engine = createHlsVideoEngine();
     const mediaElement = document.createElement('video');
+
     mediaElement.preload = 'auto';
 
     engine.context.mediaElement.set(mediaElement);
@@ -979,10 +1057,12 @@ http://example.com/video-seg1.m4s
 
       return unmockedFetchFallback(url);
     });
+
     globalThis.fetch = mockFetch;
 
-    const engine = createSimpleHlsEngine();
+    const engine = createHlsVideoEngine();
     const mediaElement = document.createElement('video');
+
     mediaElement.preload = 'auto';
 
     engine.context.mediaElement.set(mediaElement);
@@ -996,6 +1076,7 @@ http://example.com/video-seg1.m4s
         // Should have resolved presentation with text tracks
         expect(state.presentation?.selectionSets).toBeDefined();
         const textSet = state.presentation?.selectionSets?.find((s: any) => s.type === 'text');
+
         expect(textSet).toBeDefined();
 
         // Should NOT auto-select text track (user opt-in)
@@ -1034,9 +1115,10 @@ http://example.com/video-seg1.m4s
 
       return unmockedFetchFallback(url);
     });
+
     globalThis.fetch = mockFetch;
 
-    const engine = createSimpleHlsEngine();
+    const engine = createHlsVideoEngine();
 
     // Patch state but NOT owners (no mediaElement)
     engine.state.presentation.set({ url: 'http://example.com/playlist.m3u8' });
@@ -1046,6 +1128,7 @@ http://example.com/video-seg1.m4s
     await vi.waitFor(
       () => {
         const state = snapshot(engine.state);
+
         expect(state.presentation?.selectionSets).toBeDefined();
         expect(state.selectedVideoTrackId).toBeDefined();
 
@@ -1053,6 +1136,7 @@ http://example.com/video-seg1.m4s
         const videoTrack = state.presentation?.selectionSets
           ?.find((s: any) => s.type === 'video')
           ?.switchingSets?.[0]?.tracks?.find((t: any) => t.id === state.selectedVideoTrackId);
+
         expect(videoTrack?.segments).toBeDefined();
       },
       { timeout: 2000 }
@@ -1111,10 +1195,12 @@ http://example.com/audio-seg1.m4s
 
       return unmockedFetchFallback(url);
     });
+
     globalThis.fetch = mockFetch;
 
-    const engine = createSimpleHlsEngine();
+    const engine = createHlsVideoEngine();
     const mediaElement = document.createElement('video');
+
     mediaElement.preload = 'none';
 
     engine.context.mediaElement.set(mediaElement);
@@ -1191,10 +1277,12 @@ http://example.com/seg1.m4s
 
       return unmockedFetchFallback(url);
     });
+
     globalThis.fetch = mockFetch;
 
-    const engine = createSimpleHlsEngine();
+    const engine = createHlsVideoEngine();
     const mediaElement = document.createElement('video');
+
     mediaElement.preload = 'metadata';
 
     engine.context.mediaElement.set(mediaElement);
@@ -1212,6 +1300,7 @@ http://example.com/seg1.m4s
         const videoTrack = state.presentation?.selectionSets
           ?.find((s: any) => s.type === 'video')
           ?.switchingSets?.[0]?.tracks?.find((t: any) => t.id === state.selectedVideoTrackId);
+
         expect(videoTrack?.segments).toBeDefined();
 
         // Init segment should be loaded (advances readyState to HAVE_METADATA)
@@ -1225,8 +1314,10 @@ http://example.com/seg1.m4s
     expect(mockFetch).toHaveBeenCalledTimes(3);
     const fetchedUrls = mockFetch.mock.calls.map((c: any[]) => {
       const input = c[0] as RequestInfo | URL;
+
       return typeof input === 'string' ? input : input instanceof URL ? input.href : (input as Request).url;
     });
+
     expect(fetchedUrls).not.toContain('http://example.com/seg1.m4s');
 
     engine.destroy();
@@ -1264,12 +1355,14 @@ http://example.com/seg1.m4s
 
       return unmockedFetchFallback(url);
     });
+
     globalThis.fetch = mockFetch;
 
     // Use a conservative initialBandwidth so switchVideoQuality also selects 360p and
     // doesn't immediately upgrade — verifying only the selected track is resolved.
-    const engine = createSimpleHlsEngine({ initialBandwidth: 600_000 });
+    const engine = createHlsVideoEngine({ initialBandwidth: 600_000 });
     const mediaElement = document.createElement('video');
+
     mediaElement.preload = 'auto';
 
     engine.context.mediaElement.set(mediaElement);
@@ -1279,12 +1372,14 @@ http://example.com/seg1.m4s
     await vi.waitFor(
       () => {
         const state = snapshot(engine.state);
+
         expect(state.selectedVideoTrackId).toBeDefined();
 
         // Selected track should be resolved
         const selectedTrack = state.presentation?.selectionSets
           ?.find((s: any) => s.type === 'video')
           ?.switchingSets?.[0]?.tracks?.find((t: any) => t.id === state.selectedVideoTrackId);
+
         expect(selectedTrack?.segments).toBeDefined();
       },
       { timeout: 2000 }
@@ -1299,6 +1394,7 @@ http://example.com/seg1.m4s
 
     // Only ONE track should be resolved (has segments)
     const resolvedTracks = allVideoTracks?.filter((t: any) => t.segments);
+
     expect(resolvedTracks?.length).toBe(1);
 
     // The resolved track should be the selected one
@@ -1309,8 +1405,10 @@ http://example.com/seg1.m4s
     // total fetch count (which shifts with init/segment loading of the selected track).
     const fetchedUrls = mockFetch.mock.calls.map((call: unknown[]) => {
       const input = call[0] as RequestInfo | URL;
+
       return typeof input === 'string' ? input : input instanceof URL ? input.href : (input as Request).url;
     });
+
     expect(fetchedUrls.some((u: string) => u.includes('video-720p.m3u8'))).toBe(false);
     expect(fetchedUrls.some((u: string) => u.includes('video-1080p.m3u8'))).toBe(false);
 
@@ -1369,10 +1467,12 @@ http://example.com/text-es-seg1.vtt
 
       return unmockedFetchFallback(url);
     });
+
     globalThis.fetch = mockFetch;
 
-    const engine = createSimpleHlsEngine();
+    const engine = createHlsVideoEngine();
     const mediaElement = document.createElement('video');
+
     mediaElement.preload = 'auto';
 
     engine.context.mediaElement.set(mediaElement);
@@ -1383,8 +1483,10 @@ http://example.com/text-es-seg1.vtt
     await vi.waitFor(
       () => {
         const state = snapshot(engine.state);
+
         expect(state.presentation?.selectionSets).toBeDefined();
         const textSet = state.presentation?.selectionSets?.find((s: any) => s.type === 'text');
+
         expect(textSet?.switchingSets?.[0]?.tracks.length).toBeGreaterThan(0);
       },
       { timeout: 2000 }
@@ -1393,9 +1495,11 @@ http://example.com/text-es-seg1.vtt
     // Get text track IDs
     const textSet = engine.state.presentation.get()?.selectionSets?.find((s: any) => s.type === 'text');
     const textTracks = textSet?.switchingSets?.[0]?.tracks;
+
     expect(textTracks?.length).toBe(2);
 
     const englishTrack = textTracks?.find((t: any) => t.language === 'en');
+
     expect(englishTrack).toBeDefined();
 
     // Manually select English text track
@@ -1405,12 +1509,14 @@ http://example.com/text-es-seg1.vtt
     await vi.waitFor(
       () => {
         const state = snapshot(engine.state);
+
         expect(state.selectedTextTrackId).toBe(englishTrack!.id);
 
         // Text track should be resolved (has segments)
         const resolvedTextTrack = state.presentation?.selectionSets
           ?.find((s: any) => s.type === 'text')
           ?.switchingSets?.[0]?.tracks?.find((t: any) => t.id === state.selectedTextTrackId);
+
         expect(resolvedTextTrack?.segments).toBeDefined();
         expect(resolvedTextTrack?.segments?.length).toBeGreaterThan(0);
       },
@@ -1461,12 +1567,14 @@ http://example.com/text-es-seg1.vtt
 
       return unmockedFetchFallback(url);
     });
+
     globalThis.fetch = mockFetch;
 
-    const engine = createSimpleHlsEngine({
+    const engine = createHlsVideoEngine({
       enableDefaultTrack: true,
     });
     const mediaElement = document.createElement('video');
+
     mediaElement.preload = 'auto';
 
     engine.context.mediaElement.set(mediaElement);
@@ -1477,6 +1585,7 @@ http://example.com/text-es-seg1.vtt
     await vi.waitFor(
       () => {
         const state = snapshot(engine.state);
+
         expect(state.presentation?.selectionSets).toBeDefined();
 
         // Should auto-select text track with DEFAULT=YES + AUTOSELECT=YES
@@ -1537,12 +1646,14 @@ http://example.com/text-fr-seg1.vtt
 
       return unmockedFetchFallback(url);
     });
+
     globalThis.fetch = mockFetch;
 
-    const engine = createSimpleHlsEngine({
+    const engine = createHlsVideoEngine({
       preferredSubtitleLanguage: 'fr',
     });
     const mediaElement = document.createElement('video');
+
     mediaElement.preload = 'auto';
 
     engine.context.mediaElement.set(mediaElement);
@@ -1553,6 +1664,7 @@ http://example.com/text-fr-seg1.vtt
     await vi.waitFor(
       () => {
         const state = snapshot(engine.state);
+
         expect(state.presentation?.selectionSets).toBeDefined();
 
         expect(state.selectedTextTrackId).toBeDefined();
@@ -1622,10 +1734,12 @@ http://example.com/text-es-seg1.vtt
 
       return unmockedFetchFallback(url);
     });
+
     globalThis.fetch = mockFetch;
 
-    const engine = createSimpleHlsEngine();
+    const engine = createHlsVideoEngine();
     const mediaElement = document.createElement('video');
+
     mediaElement.preload = 'auto';
 
     engine.context.mediaElement.set(mediaElement);
@@ -1636,6 +1750,7 @@ http://example.com/text-es-seg1.vtt
     await vi.waitFor(
       () => {
         const state = snapshot(engine.state);
+
         expect(state.presentation?.selectionSets).toBeDefined();
       },
       { timeout: 2000 }
@@ -1653,11 +1768,13 @@ http://example.com/text-es-seg1.vtt
     await vi.waitFor(
       () => {
         const state = snapshot(engine.state);
+
         expect(state.selectedTextTrackId).toBe(englishTrack!.id);
 
         const resolvedTrack = state.presentation?.selectionSets
           ?.find((s: any) => s.type === 'text')
           ?.switchingSets?.[0]?.tracks?.find((t: any) => t.id === englishTrack!.id);
+
         expect(resolvedTrack?.segments).toBeDefined();
         expect(resolvedTrack?.segments?.length).toBeGreaterThan(0);
       },
@@ -1670,11 +1787,13 @@ http://example.com/text-es-seg1.vtt
     await vi.waitFor(
       () => {
         const state = snapshot(engine.state);
+
         expect(state.selectedTextTrackId).toBe(spanishTrack!.id);
 
         const resolvedTrack = state.presentation?.selectionSets
           ?.find((s: any) => s.type === 'text')
           ?.switchingSets?.[0]?.tracks?.find((t: any) => t.id === spanishTrack!.id);
+
         expect(resolvedTrack?.segments).toBeDefined();
         expect(resolvedTrack?.segments?.length).toBeGreaterThan(0);
       },
@@ -1714,10 +1833,12 @@ http://example.com/video-seg1.m4s
 
       return unmockedFetchFallback(url);
     });
+
     globalThis.fetch = mockFetch;
 
-    const engine = createSimpleHlsEngine();
+    const engine = createHlsVideoEngine();
     const mediaElement = document.createElement('video');
+
     mediaElement.preload = 'auto';
 
     engine.context.mediaElement.set(mediaElement);
@@ -1727,11 +1848,12 @@ http://example.com/video-seg1.m4s
     // Wait for text tracks to be set up
     await vi.waitFor(
       () => {
-        // Track elements should be in DOM
-        expect(mediaElement.children.length).toBe(3);
+        // Track elements should be in DOM (count <track> specifically — the
+        // MSE attach contributes a <source> child).
+        expect(mediaElement.querySelectorAll('track')).toHaveLength(3);
 
         // Verify track elements
-        const tracks = Array.from(mediaElement.children) as HTMLTrackElement[];
+        const tracks = Array.from(mediaElement.querySelectorAll('track'));
 
         // English track
         expect(tracks[0]!.kind).toBe('subtitles');
@@ -1810,25 +1932,28 @@ http://example.com/text-es-seg1.vtt
 
       return unmockedFetchFallback(url);
     });
+
     globalThis.fetch = mockFetch;
 
-    const engine = createSimpleHlsEngine();
+    const engine = createHlsVideoEngine();
     const mediaElement = document.createElement('video');
+
     mediaElement.preload = 'auto';
 
     engine.context.mediaElement.set(mediaElement);
     engine.state.presentation.set({ url: 'http://example.com/playlist.m3u8' });
     engine.state.preload.set('auto');
 
-    // Wait for text tracks to be set up
+    // Wait for text tracks to be set up (count <track> specifically — the
+    // MSE attach contributes a <source> child).
     await vi.waitFor(
       () => {
-        expect(mediaElement.children.length).toBe(2);
+        expect(mediaElement.querySelectorAll('track')).toHaveLength(2);
       },
       { timeout: 2000 }
     );
 
-    const tracks = Array.from(mediaElement.children) as HTMLTrackElement[];
+    const tracks = Array.from(mediaElement.querySelectorAll('track'));
     const englishTrack = tracks.find((el) => el.srclang === 'en')!;
     const spanishTrack = tracks.find((el) => el.srclang === 'es')!;
 
@@ -1909,10 +2034,12 @@ http://example.com/seg2.m4s
 
     return unmockedFetchFallback(url);
   });
+
   globalThis.fetch = mockFetch;
 
-  const engine = createSimpleHlsEngine();
+  const engine = createHlsVideoEngine();
   const mediaElement = document.createElement('video');
+
   mediaElement.preload = 'auto';
 
   engine.context.mediaElement.set(mediaElement);
@@ -1933,6 +2060,7 @@ http://example.com/seg2.m4s
 
       // Each segment should have id and trackId
       const firstSegment = videoCtx?.segments?.[0];
+
       expect(firstSegment?.id).toBeDefined();
       expect(firstSegment?.trackId).toBeDefined();
     },
@@ -1984,10 +2112,12 @@ http://example.com/audio-seg1.m4s
 
     return unmockedFetchFallback(url);
   });
+
   globalThis.fetch = mockFetch;
 
-  const engine = createSimpleHlsEngine();
+  const engine = createHlsVideoEngine();
   const mediaElement = document.createElement('video');
+
   mediaElement.preload = 'auto';
 
   engine.context.mediaElement.set(mediaElement);
@@ -2016,4 +2146,84 @@ http://example.com/audio-seg1.m4s
   );
 
   engine.destroy();
+});
+
+it('projects Apple JSON chapters from EXT-X-SESSION-DATA into a hidden chapters track', async () => {
+  const mockFetch = vi.fn().mockImplementation((input: RequestInfo | URL) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : (input as Request).url;
+
+    if (url.includes('playlist.m3u8')) {
+      return Promise.resolve(
+        new Response(`#EXTM3U
+#EXT-X-VERSION:7
+#EXT-X-SESSION-DATA:DATA-ID="com.apple.hls.chapters",FORMAT=JSON,URI="http://example.com/chapters.json"
+#EXT-X-STREAM-INF:BANDWIDTH=1000000,CODECS="avc1.42E01E",RESOLUTION=640x360
+http://example.com/video-360p.m3u8`)
+      );
+    }
+
+    if (url.includes('video-360p.m3u8')) {
+      return Promise.resolve(
+        new Response(`#EXTM3U
+#EXT-X-VERSION:7
+#EXT-X-TARGETDURATION:10
+#EXT-X-MAP:URI="http://example.com/init-video.mp4"
+#EXTINF:10.0,
+http://example.com/video-seg1.m4s
+#EXT-X-ENDLIST`)
+      );
+    }
+
+    if (url.includes('chapters.json')) {
+      return Promise.resolve(
+        new Response(
+          JSON.stringify([
+            { 'start-time': 0, titles: [{ language: 'und', title: 'Intro' }] },
+            { 'start-time': 4, titles: [{ language: 'und', title: 'Outro' }] },
+          ])
+        )
+      );
+    }
+
+    return unmockedFetchFallback(url);
+  });
+
+  const originalFetch = globalThis.fetch;
+
+  globalThis.fetch = mockFetch;
+
+  const engine = createHlsVideoEngine();
+  const mediaElement = document.createElement('video');
+
+  mediaElement.preload = 'auto';
+
+  engine.context.mediaElement.set(mediaElement);
+  engine.state.presentation.set({ url: 'http://example.com/playlist.m3u8' });
+  engine.state.preload.set('auto');
+
+  const chaptersTrack = () => mediaElement.querySelector<HTMLTrackElement>('track[kind="chapters"]');
+
+  await vi.waitFor(
+    () => {
+      expect(chaptersTrack()?.track.mode).toBe('hidden');
+      expect(chaptersTrack()?.track.cues?.length).toBe(2);
+    },
+    { timeout: 3000 }
+  );
+
+  // SAFETY: `loadChapters` adds `VTTCue`s only.
+  const cues = Array.from(chaptersTrack()!.track.cues!) as VTTCue[];
+
+  // The open last chapter ends at the largest safe integer; readers clamp.
+  expect(cues.map((cue) => [cue.startTime, cue.endTime, cue.text])).toEqual([
+    [0, 4, 'Intro'],
+    [4, Number.MAX_SAFE_INTEGER, 'Outro'],
+  ]);
+  // The chapters track's mode changes never registered as subtitle intent.
+  expect(engine.state.userTextTrackSelection.get()).toBeUndefined();
+
+  engine.destroy();
+
+  expect(chaptersTrack()).toBeNull();
+  globalThis.fetch = originalFetch;
 });

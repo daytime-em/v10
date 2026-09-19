@@ -1,28 +1,32 @@
 import { generateId } from '@videojs/utils/string';
+
 import type {
   AddressableObject,
   AudioSelectionSet,
   AudioSwitchingSet,
   FrameRate,
+  MultivariantPlaylistMetadata,
   PartiallyResolvedAudioTrack,
   PartiallyResolvedTextTrack,
   PartiallyResolvedVideoTrack,
   Presentation,
   SelectionSet,
+  SessionDataEntry,
   TextSelectionSet,
   TextSwitchingSet,
   VideoSelectionSet,
   VideoSwitchingSet,
 } from '../types';
+import { MULTIVARIANT_PLAYLIST_METADATA_KEY } from '../types';
 import { matchTag, parseCodecs } from './parse-attributes';
 import { resolveUrl } from './resolve-url';
 
 /**
  * Parse HLS multivariant playlist into a Presentation.
  *
- * Returns Presentation with partially resolved tracks (no segment information).
- * Tracks contain metadata from multivariant playlist (bandwidth, resolution, codecs)
- * but segment information is added when media playlists are fetched.
+ * Returns Presentation with partially resolved tracks (no segment information). Tracks contain metadata from
+ * multivariant playlist (bandwidth, resolution, codecs) but segment information is added when media playlists are
+ * fetched.
  *
  * @param text - Raw playlist text content
  * @param unresolved - Unresolved presentation (contains URL for base URL resolution)
@@ -65,17 +69,15 @@ export function parseMultivariantPlaylist(text: string, unresolved: AddressableO
   const streams: StreamInfo[] = [];
   const audioRenditions: AudioRenditionInfo[] = [];
   const subtitleRenditions: SubtitleRenditionInfo[] = [];
+  const sessionData: SessionDataEntry[] = [];
 
   // State for STREAM-INF parsing (URI follows on next line)
   let pendingStreamInfo: Omit<StreamInfo, 'uri'> | null = null;
 
   for (const line of lines) {
     const trimmed = line.trim();
-
     // Skip empty lines and comments
-    if (!trimmed || (trimmed.startsWith('#') && !trimmed.startsWith('#EXT'))) {
-      continue;
-    }
+    if (!trimmed || (trimmed.startsWith('#') && !trimmed.startsWith('#EXT'))) continue;
 
     // Skip tags not used in Presentation model
     if (
@@ -86,8 +88,38 @@ export function parseMultivariantPlaylist(text: string, unresolved: AddressableO
       continue;
     }
 
+    // #EXT-X-SESSION-DATA — recorded, not fetched; a behavior that knows the
+    // DATA-ID reads it back via `getSessionData`.
+    const sessionDataAttrs = matchTag(trimmed, 'EXT-X-SESSION-DATA');
+
+    if (sessionDataAttrs) {
+      const dataId = sessionDataAttrs.get('DATA-ID');
+      const value = sessionDataAttrs.get('VALUE');
+      const uri = sessionDataAttrs.get('URI');
+
+      // A tag MUST carry DATA-ID and exactly one of VALUE / URI.
+      if (dataId && (value !== undefined || uri !== undefined)) {
+        const language = sessionDataAttrs.get('LANGUAGE');
+        const entry: SessionDataEntry = { dataId };
+
+        if (value !== undefined) entry.value = value;
+
+        if (uri !== undefined) {
+          entry.uri = resolveUrl(uri, baseUrl);
+          entry.format = sessionDataAttrs.get('FORMAT') === 'RAW' ? 'RAW' : 'JSON';
+        }
+
+        if (language) entry.language = language;
+
+        sessionData.push(entry);
+      }
+
+      continue;
+    }
+
     // #EXT-X-MEDIA:TYPE=AUDIO/SUBTITLES
     const mediaAttrs = matchTag(trimmed, 'EXT-X-MEDIA');
+
     if (mediaAttrs) {
       const type = mediaAttrs.get('TYPE');
       const groupId = mediaAttrs.get('GROUP-ID');
@@ -95,6 +127,7 @@ export function parseMultivariantPlaylist(text: string, unresolved: AddressableO
 
       if (type === 'AUDIO' && groupId && name) {
         const uri = mediaAttrs.get('URI');
+
         audioRenditions.push({
           groupId,
           name,
@@ -111,6 +144,7 @@ export function parseMultivariantPlaylist(text: string, unresolved: AddressableO
 
       if (type === 'SUBTITLES' && groupId && name) {
         const uri = mediaAttrs.get('URI');
+
         // URI is required for subtitle tracks
         if (uri) {
           subtitleRenditions.push({
@@ -124,11 +158,13 @@ export function parseMultivariantPlaylist(text: string, unresolved: AddressableO
           });
         }
       }
+
       continue;
     }
 
     // #EXT-X-STREAM-INF:BANDWIDTH=...
     const streamInfAttrs = matchTag(trimmed, 'EXT-X-STREAM-INF');
+
     if (streamInfAttrs) {
       pendingStreamInfo = {
         bandwidth: streamInfAttrs.getInt('BANDWIDTH', 0)!,
@@ -188,18 +224,22 @@ export function parseMultivariantPlaylist(text: string, unresolved: AddressableO
   // live at *distinct* per-CDN URIs, so they stay separate — only the same-URI
   // cross-product merges.)
   const videoTracksByUrl = new Map<string, PartiallyResolvedVideoTrack>();
+
   for (const stream of videoStreams) {
     const existing = videoTracksByUrl.get(stream.uri);
+
     if (existing) {
       if (stream.audioGroupId && !existing.audioGroupIds?.includes(stream.audioGroupId)) {
         existing.audioGroupIds = [...(existing.audioGroupIds ?? []), stream.audioGroupId];
       }
+
       // BANDWIDTH is video + audio combined; the duplicates differ only in the
       // paired audio. Keep the lowest as the closest proxy to video-only, which
       // is what ABR should rank on.
       if (stream.bandwidth < existing.bandwidth) {
         existing.bandwidth = stream.bandwidth;
       }
+
       continue;
     }
 
@@ -218,21 +258,32 @@ export function parseMultivariantPlaylist(text: string, unresolved: AddressableO
     if (stream.resolution?.width !== undefined) {
       track.width = stream.resolution.width;
     }
+
     if (stream.resolution?.height !== undefined) {
       track.height = stream.resolution.height;
     }
+
     if (codecs?.video) {
-      track.codecs = [codecs.video];
+      // When the STREAM-INF lists an audio codec but declares no AUDIO group,
+      // the audio is muxed into this rendition's segments — keep both codecs so
+      // the SourceBuffer mimetype matches the muxed media (otherwise the muxed
+      // audio fails to append: "audio object type does not match the mimetype").
+      // With an AUDIO group the audio is a separate rendition, so only the video
+      // codec belongs here.
+      track.codecs = codecs.audio && !stream.audioGroupId ? [codecs.video, codecs.audio] : [codecs.video];
     }
+
     if (stream.frameRate) {
       track.frameRate = stream.frameRate;
     }
+
     if (stream.audioGroupId) {
       track.audioGroupIds = [stream.audioGroupId];
     }
 
     videoTracksByUrl.set(stream.uri, track);
   }
+
   const videoTracks: PartiallyResolvedVideoTrack[] = [...videoTracksByUrl.values()];
 
   // Build PartiallyResolvedAudioTracks from audio-only streams
@@ -257,15 +308,40 @@ export function parseMultivariantPlaylist(text: string, unresolved: AddressableO
 
   // Build PartiallyResolvedAudioTracks from audio renditions (EXT-X-MEDIA)
   // Extract audio codecs from referencing streams
-  const audioRenditionTracks: PartiallyResolvedAudioTrack[] = audioRenditions.map((rendition) => {
+  const audioRenditionTracks: PartiallyResolvedAudioTrack[] = audioRenditions.flatMap((rendition) => {
     let audioCodecs: string[] | undefined;
+
     for (const stream of streams) {
       if (stream.audioGroupId === rendition.groupId && stream.codecs) {
         const codecs = parseCodecs(stream.codecs);
+
         if (codecs.audio) {
           audioCodecs = [codecs.audio];
           break;
         }
+      }
+    }
+
+    // A rendition with no URI names media carried in the streams referencing its
+    // group. When such a stream is audio-only it is already a track of its own, so
+    // the two describe one rendition: merge rather than add a second entry that has
+    // nothing to fetch. The rendition holds the naming and selection metadata, the
+    // stream the URL and bandwidth.
+    if (!rendition.uri) {
+      const carrier = audioOnlyTracks.find((track) => track.groupId === rendition.groupId);
+
+      if (carrier) {
+        carrier.name = rendition.name;
+
+        if (rendition.language) carrier.language = rendition.language;
+
+        if (rendition.channels) carrier.channels = rendition.channels;
+
+        if (rendition.default) carrier.default = rendition.default;
+
+        if (rendition.autoselect) carrier.autoselect = rendition.autoselect;
+
+        return [];
       }
     }
 
@@ -286,17 +362,20 @@ export function parseMultivariantPlaylist(text: string, unresolved: AddressableO
     if (rendition.language) {
       track.language = rendition.language;
     }
+
     if (audioCodecs) {
       track.codecs = audioCodecs;
     }
+
     if (rendition.default) {
       track.default = rendition.default;
     }
+
     if (rendition.autoselect) {
       track.autoselect = rendition.autoselect;
     }
 
-    return track;
+    return [track];
   });
 
   // Combine audio tracks from both EXT-X-MEDIA renditions and audio-only STREAM-INF
@@ -319,13 +398,16 @@ export function parseMultivariantPlaylist(text: string, unresolved: AddressableO
     if (rendition.language) {
       track.language = rendition.language;
     }
+
     // Match hls.js/http-streaming: only set default=true when BOTH DEFAULT=YES AND AUTOSELECT=YES
     if (rendition.default && rendition.autoselect) {
       track.default = true;
     }
+
     if (rendition.autoselect) {
       track.autoselect = rendition.autoselect;
     }
+
     if (rendition.forced) {
       track.forced = rendition.forced;
     }
@@ -385,11 +467,21 @@ export function parseMultivariantPlaylist(text: string, unresolved: AddressableO
   }
 
   // Build presentation (duration is undefined until tracks are resolved)
-  return {
+  const presentation: Presentation = {
     id: generateId(),
     url: unresolved.url,
     startTime: 0,
     // duration: undefined, // Won't be known until after at least one media playlist is fetched + parsed
     selectionSets,
   };
+
+  // Only a playlist that carries session data grows a metadata bag, so
+  // everything else keeps its shape.
+  if (sessionData.length > 0) {
+    const metadata: MultivariantPlaylistMetadata = { sessionData };
+
+    presentation.metadata = { [MULTIVARIANT_PLAYLIST_METADATA_KEY]: metadata };
+  }
+
+  return presentation;
 }

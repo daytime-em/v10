@@ -1,7 +1,16 @@
-import type { AudioPlayerStore, PlayerStore, PlayerTarget, VideoPlayerStore } from '@videojs/core/dom';
-import { audioFeatures, definePlayerFeature, features, videoFeatures } from '@videojs/core/dom';
+import {
+  type AudioPlayerStore,
+  audioFeatures,
+  definePlayerFeature,
+  features,
+  metadataFeature,
+  type PlayerStore,
+  type PlayerTarget,
+  type VideoPlayerStore,
+  videoFeatures,
+} from '@videojs/core/dom';
 import type { Slice } from '@videojs/store';
-import { assertType, describe, it } from 'vitest';
+import { assertType, describe, it } from 'vite-plus/test';
 
 import { type CreatePlayerResult, createPlayer } from '../create-player';
 
@@ -10,6 +19,8 @@ describe('createPlayer', () => {
     const result = createPlayer({ features: videoFeatures });
 
     assertType<CreatePlayerResult<VideoPlayerStore>>(result);
+    // @ts-expect-error Container is imported from the package root, not created per player.
+    result.Container;
   });
 
   it('resolves audio features to AudioPlayerStore', () => {
@@ -38,14 +49,43 @@ describe('createPlayer', () => {
     assertType<CreatePlayerResult<PlayerStore<[Slice<PlayerTarget, CustomState>]>>>(result);
   });
 
-  it('accepts the orientation lock feature alias with and without config', () => {
-    const configuredOrientationLock = features.orientationLock({ type: 'portrait' });
+  it('infers config props from selected features', () => {
+    const withMetadata = createPlayer({ features: [metadataFeature] });
+    const withoutMetadata = createPlayer({ features: [features.playback] });
 
-    const defaultResult = createPlayer({ features: [features.orientationLock] });
-    const configuredResult = createPlayer({ features: [configuredOrientationLock] });
+    <withMetadata.Player title="Title">
+      <div />
+    </withMetadata.Player>;
 
-    assertType<CreatePlayerResult<PlayerStore<[typeof features.orientationLock]>>>(defaultResult);
-    assertType<CreatePlayerResult<PlayerStore<[typeof configuredOrientationLock]>>>(configuredResult);
+    // @ts-expect-error metadata props are absent when the feature is absent.
+    <withoutMetadata.Player title="Title">
+      <div />
+    </withoutMetadata.Player>;
+  });
+
+  it('exposes orientation lock configuration as a player prop', () => {
+    const withOrientationLock = createPlayer({ features: [features.orientationLock] });
+    const withoutOrientationLock = createPlayer({ features: [features.playback] });
+
+    assertType<CreatePlayerResult<PlayerStore<[typeof features.orientationLock]>>>(withOrientationLock);
+
+    <withOrientationLock.Player orientationLockType="portrait">
+      <div />
+    </withOrientationLock.Player>;
+
+    <withOrientationLock.Player orientationLockType={null}>
+      <div />
+    </withOrientationLock.Player>;
+
+    // @ts-expect-error orientation lock props reject values outside the enum.
+    <withOrientationLock.Player orientationLockType="sideways">
+      <div />
+    </withOrientationLock.Player>;
+
+    // @ts-expect-error orientation lock props are absent when the feature is absent.
+    <withoutOrientationLock.Player orientationLockType="portrait">
+      <div />
+    </withoutOrientationLock.Player>;
   });
 
   it('resolves extended video features to generic PlayerStore', () => {

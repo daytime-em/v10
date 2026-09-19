@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vite-plus/test';
+
 import { signal } from '../../../../core/signals/primitives';
 import type { MaybeResolvedPresentation, Presentation } from '../../../../media/types';
 import { updateMediaSourceDuration } from '../update-mediasource-duration';
@@ -7,6 +8,7 @@ function setupUpdateMediaSourceDuration() {
   const state = { presentation: signal<MaybeResolvedPresentation | undefined>(undefined) };
   const context = { mediaSource: signal<MediaSource | undefined>(undefined) };
   const reactor = updateMediaSourceDuration.setup({ state, context });
+
   return { state, context, reactor };
 }
 
@@ -22,6 +24,7 @@ function makeMediaSource({
   // Back the mock with a real EventTarget so tests can dispatch
   // sourceopen / sourceended to drive `waitForMediaSourceOpen`.
   const target = new EventTarget();
+
   return Object.create(MediaSource.prototype, {
     readyState: { value: readyState, writable: true },
     duration: { value: duration, writable: true },
@@ -51,6 +54,7 @@ function makeUpdatingSourceBuffer() {
 
   const finishUpdating = () => {
     (buffer as unknown as { updating: boolean }).updating = false;
+
     for (const h of updateEndListeners) h();
   };
 
@@ -62,6 +66,7 @@ describe('updateMediaSourceDuration', () => {
     const { state, context, reactor } = setupUpdateMediaSourceDuration();
 
     const mockMediaSource = makeMediaSource();
+
     context.mediaSource.set(mockMediaSource);
     state.presentation.set({ duration: 60 } as Presentation);
 
@@ -78,6 +83,7 @@ describe('updateMediaSourceDuration', () => {
     const { state, context, reactor } = setupUpdateMediaSourceDuration();
 
     const mockMediaSource = makeMediaSource();
+
     context.mediaSource.set(mockMediaSource);
     state.presentation.set({ duration: 60 } as Presentation);
 
@@ -98,6 +104,7 @@ describe('updateMediaSourceDuration', () => {
     const { state, context, reactor } = setupUpdateMediaSourceDuration();
 
     const mockMediaSource = makeMediaSource({ readyState: 'closed' });
+
     context.mediaSource.set(mockMediaSource);
     state.presentation.set({ duration: 60 } as Presentation);
 
@@ -119,6 +126,7 @@ describe('updateMediaSourceDuration', () => {
     const { state, context, reactor } = setupUpdateMediaSourceDuration();
 
     const mockMediaSource = makeMediaSource({ readyState: 'closed' });
+
     context.mediaSource.set(mockMediaSource);
     state.presentation.set({ duration: 60 } as Presentation);
 
@@ -156,9 +164,63 @@ describe('updateMediaSourceDuration', () => {
     const { state, context, reactor } = setupUpdateMediaSourceDuration();
 
     const mockMediaSource = makeMediaSource();
+
     context.mediaSource.set(mockMediaSource);
     state.presentation.set({ duration: Number.POSITIVE_INFINITY } as Presentation);
 
+    await vi.waitFor(() => {
+      expect(mockMediaSource.duration).toBe(Number.POSITIVE_INFINITY);
+    });
+
+    reactor.destroy();
+  });
+
+  it('writes Infinity after sourceopen when the MediaSource starts closed (live)', async () => {
+    // Regression: the live path used to write only if the MediaSource was
+    // already open at entry, returning without scheduling a wait otherwise. The
+    // presentation can resolve to Infinity before `setupMediaSource` opens the
+    // MediaSource, so that eager write was missed — the first append then pinned
+    // a finite live-edge duration, and appends stalled once the window slid past.
+    const { state, context, reactor } = setupUpdateMediaSourceDuration();
+
+    const mockMediaSource = makeMediaSource({ readyState: 'closed' });
+
+    context.mediaSource.set(mockMediaSource);
+    state.presentation.set({ duration: Number.POSITIVE_INFINITY } as Presentation);
+
+    // Awaiting sourceopen — nothing written yet.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(mockMediaSource.duration).toBeNaN();
+
+    // MediaSource opens — Infinity is written.
+    transitionMediaSource(mockMediaSource, 'open', 'sourceopen');
+
+    await vi.waitFor(() => {
+      expect(mockMediaSource.duration).toBe(Number.POSITIVE_INFINITY);
+    });
+
+    reactor.destroy();
+  });
+
+  it('writes Infinity for live only once a mid-append buffer goes idle', async () => {
+    // Regression: a synchronous Infinity write that races an in-flight append
+    // throws (MSE forbids setting duration while a buffer is updating) and was
+    // swallowed, leaving the live stream pinned to a finite duration. The write
+    // must defer to a non-updating instant.
+    const { state, context, reactor } = setupUpdateMediaSourceDuration();
+
+    const { buffer: mockBuffer, finishUpdating } = makeUpdatingSourceBuffer();
+    const mockMediaSource = makeMediaSource({ duration: 30, sourceBuffers: [mockBuffer] });
+
+    context.mediaSource.set(mockMediaSource);
+    state.presentation.set({ duration: Number.POSITIVE_INFINITY } as Presentation);
+
+    // Buffer still updating — must not have written yet (and must not throw).
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(mockMediaSource.duration).toBe(30);
+
+    // Append finishes — Infinity is written, overriding the finite value.
+    finishUpdating();
     await vi.waitFor(() => {
       expect(mockMediaSource.duration).toBe(Number.POSITIVE_INFINITY);
     });
@@ -181,6 +243,7 @@ describe('updateMediaSourceDuration', () => {
     });
 
     const mockMediaSource = makeMediaSource({ sourceBuffers: [mockBuffer] });
+
     context.mediaSource.set(mockMediaSource);
 
     // Presentation duration is 60, but buffered is 60.5
@@ -293,6 +356,7 @@ describe('updateMediaSourceDuration', () => {
     // Attach an updating SourceBuffer so the task must await updateend
     const { buffer: mockBuffer, finishUpdating } = makeUpdatingSourceBuffer();
     const mockMediaSource = makeMediaSource({ sourceBuffers: [mockBuffer] });
+
     context.mediaSource.set(mockMediaSource);
     state.presentation.set({ duration: 60 } as Presentation);
 

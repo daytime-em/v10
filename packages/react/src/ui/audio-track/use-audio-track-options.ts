@@ -1,56 +1,40 @@
-'use client';
+import { AudioTrackRadioGroupCore, type AudioTrackRadioGroupOption } from '@videojs/core';
+import { selectAudioTrack } from '@videojs/core/dom';
 
-import { AudioTrackRadioGroupCore } from '@videojs/core';
-import { logMissingFeature, selectAudioTrack } from '@videojs/core/dom';
-import { useCallback, useState } from 'react';
-
-import { usePlayer } from '../../player/context';
+import { createRadioOptionsHook, type TranslatedRadioOption } from '../hooks/create-radio-options-hook';
 
 export interface AudioTrackOptionsProps extends AudioTrackRadioGroupCore.Props {}
 
-export interface AudioTrackOption {
-  value: string;
-  label: string;
-  disabled: boolean;
-}
+export type AudioTrackOption = TranslatedRadioOption<AudioTrackRadioGroupOption>;
 
 export interface AudioTrackOptionsResult {
   state: AudioTrackRadioGroupCore.State;
+  label: string;
   value: string;
+  selectedLabel: string;
   options: AudioTrackOption[];
   disabled: boolean;
+  hidden: boolean;
   setValue: (value: string) => void;
 }
 
+const useAudioTrackRadioOptions = createRadioOptionsHook({
+  name: 'useAudioTrackOptions',
+  feature: 'audioTrack',
+  selector: selectAudioTrack,
+  createCore: () => new AudioTrackRadioGroupCore(),
+});
+
+/**
+ * Create audio track menu options from the player audio track state. Returns `null` when the audio track feature is not
+ * configured.
+ *
+ * @param props - Optional `label`, `formatTrack`, and `disabled` overrides.
+ */
 export function useAudioTrackOptions(props?: AudioTrackOptionsProps): AudioTrackOptionsResult | null {
   'use no memo';
 
-  const media = usePlayer(selectAudioTrack);
-  const [core] = useState(() => new AudioTrackRadioGroupCore());
-
-  core.setProps(props ?? {});
-
-  const setValue = useCallback((value: string) => core.selectValue(media!, value), [core, media]);
-
-  if (!media) {
-    if (__DEV__) logMissingFeature('useAudioTrackOptions', selectAudioTrack.displayName ?? 'audioTrack');
-    return null;
-  }
-
-  core.setMedia(media);
-  const state = core.getState();
-
-  return {
-    state,
-    value: state.value,
-    options: state.tracks.map((track) => ({
-      value: track.value,
-      label: track.label,
-      disabled: state.disabled,
-    })),
-    disabled: state.disabled,
-    setValue,
-  };
+  return useAudioTrackRadioOptions(props);
 }
 
 export namespace useAudioTrackOptions {

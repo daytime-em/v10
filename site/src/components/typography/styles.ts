@@ -1,9 +1,8 @@
 /**
  * Shared Tailwind class strings for typography elements.
  *
- * Used by both the Astro typography components and `renderInlineMarkdown`
- * so styling stays in sync across server-rendered MDX and programmatic
- * HTML generation.
+ * Used by both the Astro typography components and `renderInlineMarkdown` so styling stays in sync across
+ * server-rendered MDX and programmatic HTML generation.
  */
 export const shared = {
   a: 'underline intent:decoration-gold',
@@ -12,9 +11,9 @@ export const shared = {
   pre: 'shiki astro-code',
   em: 'italic',
   li: '',
-  ol: 'list-decimal list-outside pl-4 space-y-1',
-  p: 'my-4',
+  ol: 'list-decimal list-outside pl-4 space-y-1 leading-relaxed',
+  p: 'my-4 leading-relaxed',
   prose: 'mx-auto max-w-3xl',
-  strong: 'font-bold',
-  ul: 'list-disc list-outside pl-4 space-y-1',
+  strong: 'font-semibold',
+  ul: 'list-disc list-outside pl-4 space-y-1 leading-relaxed',
 } as const;

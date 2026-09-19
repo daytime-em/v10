@@ -1,5 +1,5 @@
-import { QualityRadioGroupElement } from '../../ui/quality-radio-group/quality-radio-group-element';
-import { safeDefine } from '../safe-define';
+import { safeDefine } from '../../registration/safe-define';
+import { QualityRadioGroupElement } from '../../ui/quality-radio-group/element';
 
 safeDefine(QualityRadioGroupElement);
 

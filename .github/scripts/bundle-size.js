@@ -2,11 +2,12 @@
  * Measures bundle sizes for all packages.
  *
  * Auto-discovers packages from `packages/`, reads their `exports` field to find
- * entry points, and externalizes `peerDependencies`.
+ * entry points, and externalizes `peerDependencies` plus dependencies that
+ * support published output without belonging to the library implementation.
  *
- * JS sizes are initial static graph totals (minified + brotli). Lazy dynamic
- * chunks are measured separately so they stay visible without counting as
- * eager entry cost.
+ * Each JS export is bundled independently. Sizes are initial static graph
+ * totals (minified + brotli); lazy dynamic chunks are measured separately so
+ * they stay visible without counting as eager entry cost.
  *
  * Wildcard exports (e.g., `./ui/*`, `./media/⁕/index.js`) are resolved to
  * actual files on disk. Supports both file-level (`*.js`) and directory-level
@@ -15,7 +16,7 @@
  * CSS files are minified with esbuild then brotli-compressed.
  *
  * Each entry includes a `category` field for grouped reporting in html/react:
- * preset, media, player, skin, ui, or feature.
+ * preset, media, extension, player, skin, ui, or feature.
  *
  * Usage: node .github/scripts/bundle-size.js [--root repo-root] [--json output.json]
  */
@@ -40,6 +41,9 @@ const ROOT =
 const PACKAGES_DIR = join(ROOT, 'packages');
 
 const SKIP_PACKAGES = new Set([
+  // Base revisions measured by the PR job can predate the VJSC rename.
+  'compiler',
+  'vjsc',
   'react-native',
   'skins',
   'icons',
@@ -47,6 +51,9 @@ const SKIP_PACKAGES = new Set([
 
 /** Packages that get categorized breakdowns in the report. */
 const CATEGORIZED_PACKAGES = new Set(['html', 'react']);
+
+/** Published support dependencies excluded from library implementation sizes. */
+const REPORT_EXTERNAL_DEPENDENCIES = new Set(['react-compiler-runtime']);
 
 /** UI compound component parts — excluded from the report. */
 const UI_PARTS = new Set([
@@ -133,16 +140,22 @@ function buildPresetEntry(pkgShortName, config, distDir) {
     // Key not in lookup → not applicable for this package type (e.g., HTML
     // has no media/features entries). Skip without aborting.
     if (!entry) return true;
+
     const fullPath = resolve(distDir, entry.path);
     if (!existsSync(fullPath)) return false;
+
     lines.push(`export { ${entry.name} } from './${entry.path}';`);
     return true;
   }
 
   if (!addExport(`${config.preset}/${config.skin}`)) return null;
+
   if (!addExport(`${config.preset}/player`)) return null;
+
   if (!addExport(`${config.preset}/media`)) return null;
+
   if (!addExport(`${config.preset}/features`)) return null;
+
   if (config.hls && !addExport('hlsjs-video')) return null;
 
   return lines.length > 0 ? lines.join('\n') : null;
@@ -153,14 +166,11 @@ function buildPresetEntry(pkgShortName, config, distDir) {
  * @property {string} name
  * @property {number} size
  * @property {'root' | 'subpath'} type
- * @property {string} [category] - preset, media, player, skin, ui, feature (only for html/react)
+ * @property {string} [category] - preset, media, extension, player, skin, ui, feature (only for html/react)
  * @property {'js' | 'css'} format
- * @property {number} [standaloneSize] - For UI components: standalone size used for stable diff gating
  * @property {number} [totalSize] - Initial + lazy dynamic chunk size
  * @property {number} [lazySize] - Lazy dynamic chunk size
  * @property {number} [chunkCount] - Number of dynamic chunks
- * @property {number} [standaloneTotalSize] - Standalone initial + lazy dynamic chunk size
- * @property {number} [standaloneLazySize] - Standalone lazy dynamic chunk size
  */
 
 function compressSize(code) {
@@ -179,26 +189,23 @@ function entryKey(path) {
   return relative(ROOT, path).replaceAll('\\', '/');
 }
 
-function staticOutputs(metafile, entryPoints) {
-  const entryPointsSet = entryPoints
-    ? new Set(entryPoints.map((entry) => entryKey(entry)))
-    : null;
+function staticOutputs(metafile, entryPoint) {
+  const entryPointKey = entryPoint ? entryKey(entryPoint) : '<stdin>';
   const outputs = new Set();
   const queue = Object.entries(metafile.outputs)
-    .filter(([, output]) =>
-      entryPointsSet
-        ? entryPointsSet.has(output.entryPoint)
-        : output.entryPoint === '<stdin>',
-    )
+    .filter(([, output]) => output.entryPoint === entryPointKey)
     .map(([path]) => path);
 
   for (const path of queue) {
     if (outputs.has(path)) continue;
+
     outputs.add(path);
 
     const output = metafile.outputs[path];
+
     for (const link of output.imports ?? []) {
       if (link.kind === 'dynamic-import') continue;
+
       if (metafile.outputs[link.path]) queue.push(link.path);
     }
   }
@@ -219,10 +226,10 @@ function sizeFields(measurement) {
   };
 }
 
-/** Bundle entry points with esbuild and return initial and lazy sizes. */
-async function measure(entryPoints, external = []) {
+/** Bundle one entry point with esbuild and return initial and lazy sizes. */
+async function measure(entryPoint, external = []) {
   const result = await build({
-    entryPoints,
+    entryPoints: [entryPoint],
     bundle: true,
     minify: true,
     treeShaking: true,
@@ -239,13 +246,14 @@ async function measure(entryPoints, external = []) {
   const sizeByPath = new Map(
     result.outputFiles.map((file) => [file.path, compressSize(file.text)]),
   );
-  const staticPaths = staticOutputs(result.metafile, entryPoints);
+  const staticPaths = staticOutputs(result.metafile, entryPoint);
   let size = 0;
   let totalSize = 0;
 
   for (const [path] of Object.entries(result.metafile.outputs)) {
     const bytes = sizeByPath.get(outputPath(path)) ?? 0;
     totalSize += bytes;
+
     if (staticPaths.has(path)) size += bytes;
   }
 
@@ -291,6 +299,7 @@ async function measureVirtual(code, resolveDir, external = []) {
   for (const [path] of Object.entries(result.metafile.outputs)) {
     const bytes = sizeByPath.get(outputPath(path)) ?? 0;
     totalSize += bytes;
+
     if (staticPaths.has(path)) size += bytes;
   }
 
@@ -308,9 +317,11 @@ async function measureVirtual(code, resolveDir, external = []) {
  */
 function resolveDefault(exportValue) {
   if (typeof exportValue === 'string') return exportValue;
+
   if (typeof exportValue === 'object' && exportValue !== null) {
     return exportValue.default ?? null;
   }
+
   return null;
 }
 
@@ -338,13 +349,19 @@ function categorize(name) {
   if (subpath === '' || /^\/(video|audio|background)$/.test(subpath)) {
     return '_skip';
   }
+
   if (subpath.startsWith('/media/')) return 'media';
+
+  if (subpath.startsWith('/extensions/')) return 'extension';
+
   if (subpath.startsWith('/ui/')) {
     // Skip compound component parts — only show main entries
     const uiName = subpath.slice('/ui/'.length);
     if (UI_PARTS.has(uiName)) return '_skip';
+
     return 'ui';
   }
+
   if (subpath.startsWith('/feature/')) return 'feature';
 
   // Match skin entries but exclude internal utilities like skin-mixin
@@ -388,10 +405,12 @@ function resolveWildcard(pkgDir, exportKey, exportValue) {
   return readdirSync(scanDir, { withFileTypes: true })
     .filter((d) => {
       if (!d.name.startsWith(prefix)) return false;
+
       return isDirectoryPattern ? d.isDirectory() : d.isFile();
     })
     .filter((d) => {
       if (isDirectoryPattern) return true;
+
       // For file patterns, the filename must end with the suffix
       return d.name.endsWith(suffix);
     })
@@ -404,7 +423,9 @@ function resolveWildcard(pkgDir, exportKey, exportValue) {
     })
     .filter(({ fullPath }) => {
       if (!existsSync(fullPath)) return false;
+
       if (fullPath.includes('.test.')) return false;
+
       return readFileSync(fullPath, 'utf8').trim().length > 0;
     })
     .sort((a, b) => a.stem.localeCompare(b.stem))
@@ -415,24 +436,51 @@ function resolveWildcard(pkgDir, exportKey, exportValue) {
     }));
 }
 
+/**
+ * Package directories under `packages/`, sorted. A direct child without a package.json is a bucket (e.g. `adapters/`)
+ * whose children are packages.
+ */
+function listPackageDirs() {
+  const dirs = [];
+
+  for (const entry of readdirSync(PACKAGES_DIR, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+
+    const dir = join(PACKAGES_DIR, entry.name);
+
+    if (existsSync(join(dir, 'package.json'))) {
+      dirs.push(dir);
+      continue;
+    }
+
+    for (const child of readdirSync(dir, { withFileTypes: true })) {
+      if (child.isDirectory() && existsSync(join(dir, child.name, 'package.json'))) {
+        dirs.push(join(dir, child.name));
+      }
+    }
+  }
+
+  return dirs.sort((a, b) => basename(a).localeCompare(basename(b)));
+}
+
 /** Discover packages and their entry points from the filesystem. */
 function discoverPackages() {
   const packages = [];
 
-  for (const dirName of readdirSync(PACKAGES_DIR).sort()) {
+  for (const pkgDir of listPackageDirs()) {
+    const dirName = basename(pkgDir);
     if (SKIP_PACKAGES.has(dirName)) continue;
 
-    const pkgJsonPath = join(PACKAGES_DIR, dirName, 'package.json');
-    if (!existsSync(pkgJsonPath)) continue;
-
-    const pkgJson = JSON.parse(readFileSync(pkgJsonPath, 'utf8'));
+    const pkgJson = JSON.parse(readFileSync(join(pkgDir, 'package.json'), 'utf8'));
     if (!pkgJson.exports) continue;
 
     const pkgName = pkgJson.name;
-    const pkgDir = join(PACKAGES_DIR, dirName);
-    const external = pkgJson.peerDependencies
-      ? Object.keys(pkgJson.peerDependencies)
-      : [];
+    const external = [
+      ...Object.keys(pkgJson.peerDependencies ?? {}),
+      ...Object.keys(pkgJson.dependencies ?? {}).filter((dependency) =>
+        REPORT_EXTERNAL_DEPENDENCIES.has(dependency),
+      ),
+    ];
 
     let rootPath = null;
     const subpaths = [];
@@ -446,6 +494,7 @@ function discoverPackages() {
             isCSS: r.isCSS,
           });
         }
+
         continue;
       }
 
@@ -476,15 +525,21 @@ function discoverPackages() {
     // discovered from exports (e.g., React tree-shakes UI from root).
     if (rootPath && CATEGORIZED_PACKAGES.has(dirName)) {
       const uiDir = join(dirname(rootPath), 'ui');
+
       if (existsSync(uiDir)) {
         const existing = new Set(subpaths.map((s) => s.name));
+
         for (const d of readdirSync(uiDir, { withFileTypes: true })) {
           if (!d.isDirectory()) continue;
+
           if (UI_PARTS.has(d.name)) continue;
+
           const indexPath = join(uiDir, d.name, 'index.js');
           if (!existsSync(indexPath)) continue;
+
           const name = `${pkgName}/ui/${d.name}`;
           if (existing.has(name)) continue;
+
           subpaths.push({ name, path: indexPath, isCSS: false });
         }
       }
@@ -534,13 +589,8 @@ async function main() {
 
     const rootCat = categorize(pkg.name);
 
-    // Always measure root — needed for UI marginal calculations even when
-    // the root itself is excluded from results (categorized packages skip
-    // root because presets are measured as virtual bundles instead).
-    const rootMeasurement = await measure([pkg.rootPath], pkg.external);
-    const rootSize = rootMeasurement.size;
-
     if (rootCat !== '_skip') {
+      const rootMeasurement = await measure(pkg.rootPath, pkg.external);
       results.push({
         name: pkg.name,
         ...sizeFields(rootMeasurement),
@@ -565,62 +615,20 @@ async function main() {
         continue;
       }
 
-      // UI components are measured as marginal over root (size) for display,
-      // plus standalone (standaloneSize) for stable cross-build diff gating.
-      // Marginal sizes shift when root content changes due to brotli
-      // compression non-linearity, so diffs must gate on standalone.
-      let size;
-      let standaloneSize;
-      let measurement;
-      let standaloneMeasurement;
-      if (cat === 'ui') {
-        const combined = await measure([pkg.rootPath, sub.path], pkg.external);
-        standaloneMeasurement = await measure([sub.path], pkg.external);
-        size = Math.max(0, combined.size - rootSize);
-        const lazySize = Math.max(
-          0,
-          combined.lazySize - rootMeasurement.lazySize,
-        );
-        measurement = {
-          size,
-          totalSize: size + lazySize,
-          lazySize,
-          chunkCount: Math.max(
-            0,
-            combined.chunkCount - rootMeasurement.chunkCount,
-          ),
-        };
-        standaloneSize = standaloneMeasurement.size;
-      } else {
-        measurement = await measure([sub.path], pkg.external);
-        size = measurement.size;
-      }
+      const measurement = await measure(sub.path, pkg.external);
 
       results.push({
         name: sub.name,
-        size,
+        ...sizeFields(measurement),
         type: 'subpath',
         ...(cat ? { category: cat } : {}),
         format: 'js',
-        ...(measurement && measurement.lazySize > 0
-          ? {
-              totalSize: measurement.totalSize,
-              lazySize: measurement.lazySize,
-              chunkCount: measurement.chunkCount,
-            }
-          : {}),
-        ...(standaloneSize !== undefined ? { standaloneSize } : {}),
-        ...(standaloneMeasurement && standaloneMeasurement.lazySize > 0
-          ? {
-              standaloneTotalSize: standaloneMeasurement.totalSize,
-              standaloneLazySize: standaloneMeasurement.lazySize,
-            }
-          : {}),
       });
     }
 
     // Measure preset virtual bundles for categorized packages.
     const pkgShortName = pkg.name.replace('@videojs/', '');
+
     if (CATEGORIZED_PACKAGES.has(pkgShortName)) {
       const distDir = dirname(pkg.rootPath);
 

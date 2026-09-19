@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vite-plus/test';
+
 import type { ContextSignals, StateSignals } from '../../../../core/composition/create-composition';
 import { signal } from '../../../../core/signals/primitives';
 import { type LoadTriggersContext, type LoadTriggersState, trackLoadTriggers } from '../track-load-triggers';
@@ -18,14 +19,26 @@ function setupTrackLoadTriggers(initialState: LoadTriggersState = {}, initialCon
   const state = makeState(initialState);
   const context = makeContext(initialContext);
   const reactor = trackLoadTriggers.setup({ state, context });
+
   return { state, context, reactor };
 }
 
-/** Creates a video element with controllable `paused` and `seeking` state. */
-function makeMediaElement({ paused = true, seeking = false }: { paused?: boolean; seeking?: boolean } = {}) {
+/** Creates a video element with controllable `paused`, `seeking`, and `autoplay` state. */
+function makeMediaElement({
+  paused = true,
+  seeking = false,
+  autoplay = false,
+}: {
+  paused?: boolean;
+  seeking?: boolean;
+  autoplay?: boolean;
+} = {}) {
   const el = document.createElement('video');
+
+  el.autoplay = autoplay;
   let pausedFlag = paused;
   let seekingFlag = seeking;
+
   Object.defineProperty(el, 'paused', { get: () => pausedFlag, configurable: true });
   Object.defineProperty(el, 'seeking', { get: () => seekingFlag, configurable: true });
   return {
@@ -101,6 +114,24 @@ describe('trackLoadTriggers', () => {
     await flush();
 
     expect(state.loadActivated.get()).toBe(true);
+    reactor.destroy();
+  });
+
+  it('sets loadActivated to true immediately if element has autoplay on entry', async () => {
+    const { el } = makeMediaElement({ autoplay: true });
+    const addEventListenerSpy = vi.spyOn(el, 'addEventListener');
+    const { state, reactor } = setupTrackLoadTriggers(
+      { presentation: { url: 'http://example.com/stream.m3u8' } },
+      { mediaElement: el }
+    );
+
+    await flush();
+
+    // Autoplay commits to loading up front (it can't wait for a `play` event
+    // that preload='none' would never let fire), so it activates on entry and
+    // never attaches play/seeking listeners.
+    expect(state.loadActivated.get()).toBe(true);
+    expect(addEventListenerSpy.mock.calls.some(([type]) => type === 'play' || type === 'seeking')).toBe(false);
     reactor.destroy();
   });
 

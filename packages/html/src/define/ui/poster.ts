@@ -1,5 +1,5 @@
-import { PosterElement } from '../../ui/poster/poster-element';
-import { safeDefine } from '../safe-define';
+import { safeDefine } from '../../registration/safe-define';
+import { PosterElement } from '../../ui/poster/element';
 
 safeDefine(PosterElement);
 

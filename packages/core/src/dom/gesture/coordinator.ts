@@ -1,5 +1,7 @@
 import { isInteractiveTarget, listen } from '@videojs/utils/dom';
 
+import { isInteractionLocked } from '../ui/interaction-lock';
+import { getGestureActionValue } from './action-value';
 import type {
   GestureActivateEvent,
   GestureBinding,
@@ -32,20 +34,39 @@ export class GestureCoordinator {
     return () => this.#subscribers.delete(callback);
   }
 
+  /**
+   * Whether a registered binding claims this tap for the given action. A claimed tap belongs to the gesture layer, so
+   * callers should leave it alone. Taps on interactive targets (buttons, sliders) are never claimed — the same
+   * filtering the pointerup listener applies. A disabled binding still claims: disabling a gesture opts out of the
+   * action, it doesn't hand the tap back to a fallback handler.
+   */
+  claimsTap(event: PointerEvent, action: string): boolean {
+    if (isInteractionLocked(this.#target)) return true;
+
+    if (isInteractiveTarget(event)) return false;
+
+    return this.#bindings.some(
+      (b) => b.type === 'tap' && b.action === action && (!b.pointer || b.pointer === event.pointerType)
+    );
+  }
+
   add(binding: GestureBinding): () => void {
+    const value = getGestureActionValue(binding.action ?? '', binding.region, binding.value);
     const wrapped: GestureBinding = {
       ...binding,
+      value,
       onActivate: (event) => {
         if (this.#subscribers.size > 0) {
           const activateEvent: GestureActivateEvent = {
             type: binding.type,
             source: 'gesture',
             action: binding.action,
-            value: binding.value,
+            value,
             region: binding.region,
             pointer: binding.pointer,
             event,
           };
+
           for (const cb of this.#subscribers) {
             try {
               cb(activateEvent);
@@ -54,6 +75,7 @@ export class GestureCoordinator {
             }
           }
         }
+
         binding.onActivate(event);
       },
     };
@@ -63,11 +85,14 @@ export class GestureCoordinator {
     this.#connect();
 
     let removed = false;
+
     return () => {
       if (removed) return;
+
       removed = true;
 
       const idx = this.#bindings.indexOf(wrapped);
+
       if (idx !== -1) this.#bindings.splice(idx, 1);
 
       this.#maybeDisconnect();
@@ -78,6 +103,7 @@ export class GestureCoordinator {
 
   #connect(): void {
     if (this.#disconnect) return;
+
     this.#disconnect = new AbortController();
     const { signal } = this.#disconnect;
 
@@ -87,7 +113,13 @@ export class GestureCoordinator {
       this.#target,
       'pointerdown',
       (event) => {
+        if (isInteractionLocked(this.#target)) {
+          pointerDownTime = 0;
+          return;
+        }
+
         if (event.button !== 0) return;
+
         pointerDownTime = Date.now();
       },
       { signal }
@@ -97,8 +129,15 @@ export class GestureCoordinator {
       this.#target,
       'pointerup',
       (event) => {
+        if (isInteractionLocked(this.#target)) {
+          pointerDownTime = 0;
+          return;
+        }
+
         if (event.button !== 0) return;
+
         if (Date.now() - pointerDownTime > TAP_THRESHOLD) return;
+
         if (isInteractiveTarget(event)) return;
 
         const pointerType = event.pointerType;
@@ -140,10 +179,12 @@ export function findGestureCoordinator(target: HTMLElement): GestureCoordinator 
 
 export function getGestureCoordinator(target: HTMLElement): GestureCoordinator {
   let coordinator = coordinators.get(target);
+
   if (!coordinator) {
     coordinator = new GestureCoordinator(target);
     coordinators.set(target, coordinator);
   }
+
   return coordinator;
 }
 
@@ -164,7 +205,9 @@ function matchBindings(
 
   for (const binding of bindings) {
     if (binding.disabled) continue;
+
     if (binding.type !== type) continue;
+
     if (binding.pointer && binding.pointer !== pointerType) continue;
 
     if (binding.region) {
@@ -181,11 +224,16 @@ function matchBindings(
 
 function getActiveRegions(bindings: GestureBinding[], type: GestureType, pointerType: string): Set<GestureRegion> {
   const regions = new Set<GestureRegion>();
+
   for (const binding of bindings) {
     if (binding.disabled) continue;
+
     if (binding.type !== type) continue;
+
     if (binding.pointer && binding.pointer !== pointerType) continue;
+
     if (binding.region) regions.add(binding.region);
   }
+
   return regions;
 }

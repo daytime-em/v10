@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vite-plus/test';
 
 import type { HotkeyActionContext } from '../actions';
 import { isHotkeyToggleAction, resolveHotkeyAction } from '../actions';
@@ -115,6 +115,24 @@ describe('toggleFullscreen', () => {
 });
 
 describe('seekStep', () => {
+  it('defaults ArrowRight to a ten second seek', () => {
+    const seek = vi.fn();
+    const store = mockStore({ currentTime: 10, duration: 100, seeking: false, seek });
+
+    resolveHotkeyAction('seekStep')!({ store, key: 'ArrowRight' });
+
+    expect(seek).toHaveBeenCalledWith(20);
+  });
+
+  it('defaults ArrowLeft to a negative ten second seek', () => {
+    const seek = vi.fn();
+    const store = mockStore({ currentTime: 20, duration: 100, seeking: false, seek });
+
+    resolveHotkeyAction('seekStep')!({ store, key: 'ArrowLeft' });
+
+    expect(seek).toHaveBeenCalledWith(10);
+  });
+
   it('seeks forward by value', () => {
     const seek = vi.fn();
     const store = mockStore({ currentTime: 10, duration: 100, seeking: false, seek });
@@ -133,17 +151,56 @@ describe('seekStep', () => {
     expect(seek).toHaveBeenCalledWith(5);
   });
 
-  it('no-ops without value', () => {
+  it('uses the default without a value', () => {
     const seek = vi.fn();
     const store = mockStore({ currentTime: 10, duration: 100, seeking: false, seek });
 
     resolveHotkeyAction('seekStep')!({ store, key: '' });
 
-    expect(seek).not.toHaveBeenCalled();
+    expect(seek).toHaveBeenCalledWith(20);
+  });
+
+  it('seeks before the time range is known', () => {
+    const seek = vi.fn();
+    const store = mockStore({ currentTime: 0, duration: 0, seeking: false, seek });
+
+    resolveHotkeyAction('seekStep')!({ store, value: 5, key: '' });
+
+    expect(seek).toHaveBeenCalledWith(5);
   });
 });
 
 describe('volumeStep', () => {
+  it('defaults ArrowUp to a five percent increase', () => {
+    const setVolume = vi.fn();
+    const store = mockStore({
+      volume: 0.5,
+      muted: false,
+      volumeAvailability: 'available',
+      setVolume,
+      toggleMuted: vi.fn(),
+    });
+
+    resolveHotkeyAction('volumeStep')!({ store, key: 'ArrowUp' });
+
+    expect(setVolume).toHaveBeenCalledWith(0.55);
+  });
+
+  it('defaults ArrowDown to a five percent decrease', () => {
+    const setVolume = vi.fn();
+    const store = mockStore({
+      volume: 0.5,
+      muted: false,
+      volumeAvailability: 'available',
+      setVolume,
+      toggleMuted: vi.fn(),
+    });
+
+    resolveHotkeyAction('volumeStep')!({ store, key: 'ArrowDown' });
+
+    expect(setVolume).toHaveBeenCalledWith(0.45);
+  });
+
   it('increases volume by value', () => {
     const setVolume = vi.fn();
     const store = mockStore({
@@ -230,6 +287,22 @@ describe('seekToPercent', () => {
     const store = mockStore({ currentTime: 0, duration: 200, seeking: false, seek });
 
     resolveHotkeyAction('seekToPercent')!({ store, key: '3' });
+
+    expect(seek).toHaveBeenCalledWith(60);
+  });
+
+  it('uses the seekable end when duration is unknown', () => {
+    const seek = vi.fn();
+    const store = mockStore({
+      currentTime: 0,
+      duration: 0,
+      seeking: false,
+      seek,
+      buffered: [],
+      seekable: [[10, 120]],
+    });
+
+    resolveHotkeyAction('seekToPercent')!({ store, value: 50, key: '' });
 
     expect(seek).toHaveBeenCalledWith(60);
   });

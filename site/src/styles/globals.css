@@ -71,7 +71,7 @@
 }
 
 /* theme inline tells tailwind to reference the value of these properties */
-/* biome-ignore assist/source/useSortedProperties: Tailwind theme namespace resets are order-sensitive. */
+/* Tailwind theme namespace resets are order-sensitive. */
 @theme inline {
   --font-*: initial;
   /* --font-instrument-sans and --font-ibm-plex-mono are defined in Base.astro */
@@ -81,8 +81,10 @@
   --font-display: "Eurostile LT Pro Extended", "Eurostile LT Pro Extended Fallback", sans-serif;
 }
 
-/* biome-ignore assist/source/useSortedProperties: Tailwind theme namespace resets are order-sensitive. */
+/* Tailwind theme namespace resets are order-sensitive. */
 @theme {
+  --breakpoint-xs: 30rem;
+
   --color-*: initial;
 
   --color-white: white;
@@ -100,9 +102,14 @@
   --color-bright-yellow: #ffca18;
   --color-gold: #ffa81b;
   --color-orange: #ff6200;
+  /* The accent follows the appearance menu (see `html[data-accent]` below); orange stays the literal brand colour. */
+  --color-accent: var(--color-orange);
   --color-red: #eb3132;
   --color-magenta: #cc3566;
   --color-magenta-dark: #922e4f;
+
+  /* Motion. The soft curve is the site's reveal easing: quick start, long settle. */
+  --ease-soft: cubic-bezier(0.2, 0.8, 0.2, 1);
 
   /* Typography */
   --tracking-*: initial;
@@ -168,6 +175,11 @@
   --text-p3--letter-spacing: var(--tracking-normal);
   --text-p3--font-weight: var(--font-weight-normal);
 
+  --text-p4: 0.75rem; /* 12px */
+  --text-p4--line-height: 1.5;
+  --text-p4--letter-spacing: var(--tracking-normal);
+  --text-p4--font-weight: var(--font-weight-normal);
+
   --text-code: 0.875em; /* 14px */
   --text-code--line-height: inherit;
   --text-code--letter-spacing: var(--tracking-normal);
@@ -185,8 +197,92 @@
   }
 }
 
-@custom-variant intent (&:hover,
-&:focus-within);
+/*
+ * Semantic surface tokens. Light values keep the existing manila palette; dark
+ * values derive from manila-light at low opacity so borders and raised surfaces
+ * read as the same hue as the text, the way most dark UIs do.
+ */
+@theme inline {
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-muted: var(--muted);
+  --color-hover: var(--hover);
+}
+
+:root {
+  --banner-height: 0px;
+  --nav-h: 0px;
+  --line: var(--color-manila-75);
+  --line-strong: var(--color-manila-dark);
+  /* Light surfaces sit above the page color rather than below it, so cards and inputs read as paper, not mud. */
+  --surface: color-mix(in srgb, var(--color-manila-light) 78%, white);
+  --surface-raised: color-mix(in srgb, var(--color-manila-light) 55%, white);
+  /* Muted is for metadata and chrome, not for text a reader has to read: grey on manila reads poorly, so readable
+     secondary text keeps full contrast here and may soften only in dark mode (see site/AGENTS.md). */
+  --muted: color-mix(in srgb, var(--color-faded-black) 65%, transparent);
+  --hover: var(--color-manila-50);
+  scroll-padding-top: calc(var(--banner-height) + var(--nav-h));
+}
+
+html:has([data-docs-layout]) {
+  /* The extra pixel is the nav's bottom border, so its content box stays on whole pixels. */
+  --nav-h: calc(var(--spacing) * 13 + 1px);
+}
+
+@media (width >= 40rem) {
+  html:has([data-docs-layout]) {
+    --nav-h: calc(var(--spacing) * 13.5 + 1px);
+  }
+}
+
+.dark {
+  --line: color-mix(in srgb, var(--color-manila-light) 10%, transparent);
+  --line-strong: color-mix(in srgb, var(--color-manila-light) 18%, transparent);
+  --surface: var(--color-soot);
+  --surface-raised: var(--color-warm-gray);
+  --muted: color-mix(in srgb, var(--color-manila-light) 60%, transparent);
+  --hover: var(--color-warm-gray);
+}
+
+/*
+ * Appearance preferences, applied to <html> by ThemeInit before paint and kept in sync by `stores/appearance.ts`.
+ * The accent swaps the token every `accent` utility reads. Each variant derives from its brand colour, nudging only
+ * lightness so light mode gets a gold that holds on manila and dark mode gets red and magenta that lift off the dark
+ * surfaces (about APCA Lc 35 against the surfaces they sit on). The deep tone drops the three dark surfaces a step.
+ */
+html[data-accent="gold"] {
+  --color-accent: oklch(from var(--color-gold) calc(l - 0.06) c h);
+}
+
+html.dark[data-accent="gold"] {
+  --color-accent: var(--color-gold);
+}
+
+html[data-accent="red"] {
+  --color-accent: var(--color-red);
+}
+
+html.dark[data-accent="red"] {
+  --color-accent: oklch(from var(--color-red) calc(l + 0.03) c h);
+}
+
+html[data-accent="magenta"] {
+  --color-accent: var(--color-magenta);
+}
+
+html.dark[data-accent="magenta"] {
+  --color-accent: oklch(from var(--color-magenta) calc(l + 0.07) c h);
+}
+
+html.dark[data-tone="deep"] {
+  --color-faded-black: #151414;
+  --color-soot: #1b1a1a;
+  --color-warm-gray: #242322;
+}
+
+@custom-variant intent (&:hover, &:focus-within);
 @custom-variant supports-container {
   @supports (container: size) {
     @slot;
@@ -194,6 +290,8 @@
 }
 @custom-variant dark (&:where(.dark, .dark *));
 @custom-variant banner-dismissed (&:where(.banner-dismissed, .banner-dismissed *));
+@custom-variant starting-style (&[data-starting-style]);
+@custom-variant ending-style (&[data-ending-style]);
 
 @layer base {
   .list-decimal .list-decimal {
@@ -219,8 +317,7 @@
   }
 
   [id] {
-    /* this only works where nav-h is defined. currently, docs */
-    scroll-margin-top: calc(var(--nav-h) + var(--spacing) * 5 + var(--scroll-mt, 0px));
+    scroll-margin-top: calc(var(--spacing) * 5 + var(--scroll-mt, 0px));
   }
 
   b,
@@ -233,7 +330,12 @@
     background-color: var(--color-bright-yellow);
   }
 
-  .dark * {
+  /* On the root so the viewport scrollbar and form controls follow the theme; `color-scheme` inherits from here. */
+  :root {
+    color-scheme: light;
+  }
+
+  .dark {
     color-scheme: dark;
   }
 }
@@ -244,6 +346,45 @@
   &::-webkit-scrollbar-thumb {
     background: var(--color-manila-dark);
     border-radius: 9999px;
+  }
+}
+
+/* Include the root itself: `.dark *` alone leaves the viewport scrollbar on the light thumb. */
+.dark,
+.dark * {
+  scrollbar-color: var(--line-strong) transparent;
+
+  &::-webkit-scrollbar-thumb {
+    background: var(--line-strong);
+  }
+}
+
+/* Thin scrollbars for side navigation and code blocks. `scroll` keeps the track visible where the platform allows. */
+@utility scrollbar-thin {
+  scrollbar-width: thin;
+
+  &::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+}
+
+/* Squircle corners where supported; falls back to the element's border-radius. */
+/*
+ * Squircle corners read much flatter than a circular arc of the same radius, so the utility also scales the radius
+ * tokens on the element. `rounded-*` reads these variables, so `rounded-lg corner-squircle` picks up the larger value
+ * without changing the class.
+ */
+@utility corner-squircle {
+  @supports (corner-shape: squircle) {
+    --radius-sm: 0.35rem;
+    --radius-md: 0.5rem;
+    --radius-lg: 0.7rem;
+    --radius-xl: 1rem;
+    --radius-2xl: 1.375rem;
+    --radius-3xl: 2rem;
+
+    corner-shape: squircle;
   }
 }
 

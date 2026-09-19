@@ -1,12 +1,13 @@
+import type { MediaRemotePlaybackCapability } from '@videojs/media';
 import { isObject } from '@videojs/utils/predicate';
-
-import type { MediaRemotePlaybackCapability } from '../../core/media/types';
 
 function resolveRemote(media: EventTarget): MediaRemotePlaybackCapability['remote'] | undefined {
   const target = media as EventTarget & { remote?: unknown };
+
   if (isObject(target.remote) && 'state' in target.remote && 'prompt' in target.remote) {
     return target.remote as MediaRemotePlaybackCapability['remote'];
   }
+
   return undefined;
 }
 
@@ -20,8 +21,7 @@ export function isRemotePlaybackConnecting(media: EventTarget) {
 
 export async function requestRemotePlayback(media: EventTarget) {
   const remote = resolveRemote(media);
-  if (!remote) {
-    throw new DOMException('Remote playback not supported', 'NotSupportedError');
-  }
+  if (!remote) throw new DOMException('Remote playback not supported', 'NotSupportedError');
+
   return remote.prompt();
 }

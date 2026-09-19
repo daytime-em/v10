@@ -1,8 +1,6 @@
 ---
 import Footer from '@/components/Footer.astro';
-import FooterEasterEgg from '@/components/FooterEasterEgg.astro';
 import Built from '@/components/home/Built/BuiltSection.astro';
-import Demo from '@/components/home/Demo/Demo.astro';
 import GetStartedBanner from '@/components/home/GetStartedBanner.astro';
 import Header from '@/components/home/Header.astro';
 import RoadMap from '@/components/home/Roadmap.astro';
@@ -16,7 +14,7 @@ const posterTime = times[Math.floor(Math.random() * times.length)];
 const poster = `${VJS10_DEMO_VIDEO.poster}?time=${posterTime}`;
 ---
 
-<Base title={SITE_TITLE} description={SITE_DESCRIPTION}>
+<Base easterEgg title={SITE_TITLE} description={SITE_DESCRIPTION}>
   <link
     rel="preload"
     href={poster}
@@ -25,15 +23,14 @@ const poster = `${VJS10_DEMO_VIDEO.poster}?time=${posterTime}`;
     fetchpriority="high"
     slot="priority-head"
   />
-  <NavBar />
+  {/* The home page stays on literal orange; the logo follows the accent everywhere else. */}
+  <NavBar pill={false} class="[--color-accent:var(--color-orange)]" />
   <main id="main-content">
     <Header poster={poster} />
-    <Demo />
     <GetStartedBanner />
     <Built />
     <RoadMap />
     <Sponsors />
   </main>
   <Footer />
-  <FooterEasterEgg />
 </Base>

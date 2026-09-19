@@ -5,9 +5,15 @@ on:
     branches:
       - 'release-please--branches--main'
 
+# release-please force-pushes the release branch on every merge to main, and each
+# push starts a fresh run here that rewrites the changelog for the branch as it
+# now stands. Each run regenerates everything from scratch, so only the run for
+# the newest push can produce the right changelog: cancel any run still going
+# when a new push arrives, rather than letting a run for an older branch state
+# finish after it and commit a stale changelog.
 concurrency:
   group: release-pr
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   changelog:
@@ -65,6 +71,10 @@ jobs:
             BODY=$(tail -n +"$((LINE_NUM + 1))" CHANGELOG.md)
           fi
 
+          # Commit titles are untrusted MDX input. Escape JSX/expression
+          # delimiters outside inline code spans while preserving their output.
+          BODY=$(printf '%s\n' "$BODY" | perl -pe 's{(`[^`]*`)(*SKIP)(*F)|([<>{}])}{\\$2}g')
+
           # Determine prerelease and breaking
           PRERELEASE=false
           if echo "$VERSION" | grep -q '-'; then
@@ -80,7 +90,7 @@ jobs:
           COMPARE_URL=$(grep -Fm1 "[@videojs/core@${VERSION}]: " CHANGELOG.md | sed 's/.*]: //' || true)
 
           # Write the site changelog file
-          OUTFILE="site/src/content/changelog/${VERSION}.md"
+          OUTFILE="site/src/content/changelog/${VERSION}.mdx"
           mkdir -p "$(dirname "$OUTFILE")"
           cat > "$OUTFILE" <<EOF
           ---

@@ -1,6 +1,7 @@
 import { createStore } from '@videojs/store';
-import { describe, expect, it, vi } from 'vitest';
-import type { PlayerTarget } from '../../../media/types';
+import { describe, expect, it, vi } from 'vite-plus/test';
+
+import type { PlayerTarget } from '../../../player';
 import { createMockVideo } from '../../../tests/test-helpers';
 import { playbackFeature } from '../playback';
 
@@ -15,6 +16,7 @@ describe('playbackFeature', () => {
       });
 
       const store = createStore<PlayerTarget>()(playbackFeature);
+
       store.attach({ media: video, container: null });
 
       expect(store.state.paused).toBe(false);
@@ -30,9 +32,70 @@ describe('playbackFeature', () => {
       });
 
       const store = createStore<PlayerTarget>()(playbackFeature);
+
       store.attach({ media: video, container: null });
 
       expect(store.state.waiting).toBe(true);
+    });
+
+    it('clears waiting once currentTime advances below HAVE_FUTURE_DATA', () => {
+      const video = createMockVideo({
+        paused: false,
+        readyState: HTMLMediaElement.HAVE_CURRENT_DATA,
+        currentTime: 0,
+      });
+
+      const store = createStore<PlayerTarget>()(playbackFeature);
+
+      store.attach({ media: video, container: null });
+
+      expect(store.state.waiting).toBe(true);
+
+      // Safari holds HAVE_CURRENT_DATA for the whole of some MSE streams, so a
+      // presented frame is the only evidence that playback ever recovered.
+      video.currentTime = 0.5;
+      video.dispatchEvent(new Event('timeupdate'));
+
+      expect(store.state.waiting).toBe(false);
+    });
+
+    it('keeps waiting while currentTime does not advance', () => {
+      const video = createMockVideo({
+        paused: false,
+        readyState: HTMLMediaElement.HAVE_CURRENT_DATA,
+        currentTime: 4,
+      });
+
+      const store = createStore<PlayerTarget>()(playbackFeature);
+
+      store.attach({ media: video, container: null });
+
+      video.dispatchEvent(new Event('timeupdate'));
+
+      expect(store.state.waiting).toBe(true);
+    });
+
+    it('restores waiting when the browser reports starvation again', () => {
+      const video = createMockVideo({
+        paused: false,
+        readyState: HTMLMediaElement.HAVE_CURRENT_DATA,
+        currentTime: 0,
+      });
+
+      const store = createStore<PlayerTarget>()(playbackFeature);
+
+      store.attach({ media: video, container: null });
+
+      video.currentTime = 12;
+      video.dispatchEvent(new Event('timeupdate'));
+      expect(store.state.waiting).toBe(false);
+
+      video.dispatchEvent(new Event('waiting'));
+      expect(store.state.waiting).toBe(true);
+
+      video.currentTime = 12.25;
+      video.dispatchEvent(new Event('timeupdate'));
+      expect(store.state.waiting).toBe(false);
     });
 
     it('detects started from currentTime', () => {
@@ -42,6 +105,7 @@ describe('playbackFeature', () => {
       });
 
       const store = createStore<PlayerTarget>()(playbackFeature);
+
       store.attach({ media: video, container: null });
 
       expect(store.state.started).toBe(true);
@@ -54,6 +118,7 @@ describe('playbackFeature', () => {
       });
 
       const store = createStore<PlayerTarget>()(playbackFeature);
+
       store.attach({ media: video, container: null });
 
       expect(store.state.started).toBe(true);
@@ -63,6 +128,7 @@ describe('playbackFeature', () => {
       const video = createMockVideo({ paused: true });
 
       const store = createStore<PlayerTarget>()(playbackFeature);
+
       store.attach({ media: video, container: null });
 
       expect(store.state.paused).toBe(true);
@@ -78,6 +144,7 @@ describe('playbackFeature', () => {
       const video = createMockVideo({ paused: false });
 
       const store = createStore<PlayerTarget>()(playbackFeature);
+
       store.attach({ media: video, container: null });
 
       expect(store.state.paused).toBe(false);
@@ -93,6 +160,7 @@ describe('playbackFeature', () => {
       const video = createMockVideo({ ended: false });
 
       const store = createStore<PlayerTarget>()(playbackFeature);
+
       store.attach({ media: video, container: null });
 
       expect(store.state.ended).toBe(false);
@@ -108,6 +176,7 @@ describe('playbackFeature', () => {
       const video = createMockVideo({ ended: true });
 
       const store = createStore<PlayerTarget>()(playbackFeature);
+
       store.attach({ media: video, container: null });
 
       expect(store.state.ended).toBe(true);
@@ -123,6 +192,7 @@ describe('playbackFeature', () => {
       const video = createMockVideo({});
 
       const store = createStore<PlayerTarget>()(playbackFeature);
+
       store.attach({ media: video, container: null });
 
       store.destroy();
@@ -139,9 +209,11 @@ describe('playbackFeature', () => {
   describe('actions', () => {
     it('play() calls play on target', async () => {
       const video = createMockVideo({});
+
       video.play = vi.fn().mockResolvedValue(undefined);
 
       const store = createStore<PlayerTarget>()(playbackFeature);
+
       store.attach({ media: video, container: null });
 
       await store.play();
@@ -151,9 +223,11 @@ describe('playbackFeature', () => {
 
     it('pause() calls pause on target', () => {
       const video = createMockVideo({});
+
       video.pause = vi.fn();
 
       const store = createStore<PlayerTarget>()(playbackFeature);
+
       store.attach({ media: video, container: null });
 
       store.pause();

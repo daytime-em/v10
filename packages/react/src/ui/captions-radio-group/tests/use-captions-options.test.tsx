@@ -1,16 +1,19 @@
-'use client';
-
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { CAPTIONS_OFF_VALUE } from '@videojs/core';
+import { registerI18n, resetI18nRegistry } from '@videojs/core/i18n';
 import type { ReactNode } from 'react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
 
+import { I18nProvider } from '../../../i18n';
 import { PlayerContextProvider, type PlayerContextValue } from '../../../player/context';
 import { createPlayerWrapper } from '../../../testing/mocks';
 import { Menu } from '../../menu';
 import { useCaptionsOptions } from '../use-captions-options';
 
-afterEach(cleanup);
+afterEach(() => {
+  resetI18nRegistry();
+  cleanup();
+});
 
 function renderCaptionsMenu({
   textTrackList = [
@@ -19,10 +22,12 @@ function renderCaptionsMenu({
   ] as const,
   subtitlesShowing = true,
   selectSubtitlesTrack = vi.fn(),
+  locale,
 }: {
   textTrackList?: readonly { kind: string; label: string; language: string; mode: string }[];
   subtitlesShowing?: boolean;
   selectSubtitlesTrack?: (value: string) => void;
+  locale?: string | undefined;
 } = {}) {
   const { Wrapper } = createPlayerWrapper({
     textTrackList,
@@ -31,17 +36,20 @@ function renderCaptionsMenu({
     chaptersCues: [],
     thumbnailCues: [],
     thumbnailTrackSrc: null,
+    thumbnailTrackCrossOrigin: null,
     toggleSubtitles: vi.fn(),
   });
-
-  render(
+  const content = (
     <Menu.Root defaultOpen align="center">
-      <Menu.Content data-testid="content">
-        <CaptionsRadioGroup />
-      </Menu.Content>
-    </Menu.Root>,
-    { wrapper: Wrapper }
+      <Menu.Popup data-testid="popup">
+        <Menu.Content data-testid="content">
+          <CaptionsRadioGroup />
+        </Menu.Content>
+      </Menu.Popup>
+    </Menu.Root>
   );
+
+  render(locale ? <I18nProvider locale={locale}>{content}</I18nProvider> : content, { wrapper: Wrapper });
 
   return { selectSubtitlesTrack };
 }
@@ -69,6 +77,7 @@ function createReactiveTextTrackWrapper(initialState: Record<string, unknown>) {
   return {
     updateState(next: Record<string, unknown>) {
       store.state = next;
+
       for (const listener of listeners) listener();
     },
     Wrapper({ children }: { children: ReactNode }) {
@@ -79,23 +88,31 @@ function createReactiveTextTrackWrapper(initialState: Record<string, unknown>) {
 
 function CaptionsAvailability(): ReactNode {
   const captions = useCaptionsOptions();
-  return <div data-testid="availability">{captions?.state.availability ?? 'missing'}</div>;
+
+  return (
+    <div data-testid="availability">
+      {captions ? `${captions.state.availability}:${captions.hidden ? 'hidden' : 'visible'}` : 'missing'}
+    </div>
+  );
 }
 
 function CaptionsRadioGroup(): ReactNode {
   const captions = useCaptionsOptions();
   if (!captions?.showMenu) return null;
 
-  const { options, setValue, value } = captions;
+  const { options, selectedLabel, setValue, value } = captions;
 
   return (
-    <Menu.RadioGroup value={value} onValueChange={setValue} aria-label="Captions">
-      {options.map((option) => (
-        <Menu.RadioItem key={option.value} value={option.value} disabled={option.disabled}>
-          {option.label}
-        </Menu.RadioItem>
-      ))}
-    </Menu.RadioGroup>
+    <>
+      <span data-testid="selected-label">{selectedLabel}</span>
+      <Menu.RadioGroup value={value} onValueChange={setValue} aria-label="Captions">
+        {options.map((option) => (
+          <Menu.RadioItem key={option.value} value={option.value} disabled={option.disabled}>
+            {option.label}
+          </Menu.RadioItem>
+        ))}
+      </Menu.RadioGroup>
+    </>
   );
 }
 
@@ -106,16 +123,18 @@ describe('useCaptionsOptions', () => {
     expect(screen.getByRole('menuitemradio', { name: 'Off' }).getAttribute('aria-checked')).toBe('false');
     expect(screen.getByRole('menuitemradio', { name: 'English' }).getAttribute('aria-checked')).toBe('false');
     expect(screen.getByRole('menuitemradio', { name: 'Spanish' }).getAttribute('aria-checked')).toBe('true');
+    expect(screen.getByTestId('selected-label').textContent).toBe('Spanish');
   });
 
   it('center aligns the popup by default', () => {
     renderCaptionsMenu();
 
-    expect(screen.getByTestId('content').getAttribute('data-align')).toBe('center');
+    expect(screen.getByTestId('popup').getAttribute('data-align')).toBe('center');
   });
 
   it('selects a captions track', () => {
     const selectSubtitlesTrack = vi.fn();
+
     renderCaptionsMenu({ selectSubtitlesTrack });
 
     fireEvent.click(screen.getByRole('menuitemradio', { name: 'English' }));
@@ -123,8 +142,25 @@ describe('useCaptionsOptions', () => {
     expect(selectSubtitlesTrack).toHaveBeenCalledWith('0');
   });
 
+  it('translates default track labels', () => {
+    registerI18n('xx', {
+      'menu.captions': 'Captions translated',
+    });
+
+    renderCaptionsMenu({
+      textTrackList: [
+        { kind: 'captions', label: '', language: '', mode: 'disabled' },
+        { kind: 'subtitles', label: 'Spanish', language: 'es', mode: 'showing' },
+      ],
+      locale: 'xx',
+    });
+
+    expect(screen.getByRole('menuitemradio', { name: 'Captions translated' })).toBeTruthy();
+  });
+
   it('turns captions off', () => {
     const selectSubtitlesTrack = vi.fn();
+
     renderCaptionsMenu({ selectSubtitlesTrack });
 
     fireEvent.click(screen.getByRole('menuitemradio', { name: 'Off' }));
@@ -137,6 +173,7 @@ describe('useCaptionsOptions', () => {
       chaptersCues: [],
       thumbnailCues: [],
       thumbnailTrackSrc: null,
+      thumbnailTrackCrossOrigin: null,
       textTrackList: [],
       subtitlesShowing: false,
       selectSubtitlesTrack: vi.fn(),
@@ -145,13 +182,14 @@ describe('useCaptionsOptions', () => {
 
     render(<CaptionsAvailability />, { wrapper: Wrapper });
 
-    expect(screen.getByTestId('availability').textContent).toBe('unavailable');
+    expect(screen.getByTestId('availability').textContent).toBe('unavailable:hidden');
 
     act(() => {
       updateState({
         chaptersCues: [],
         thumbnailCues: [],
         thumbnailTrackSrc: null,
+        thumbnailTrackCrossOrigin: null,
         textTrackList: [
           { kind: 'subtitles', label: 'English', language: 'en', mode: 'disabled' },
           { kind: 'subtitles', label: 'Spanish', language: 'es', mode: 'showing' },
@@ -162,6 +200,6 @@ describe('useCaptionsOptions', () => {
       });
     });
 
-    expect(screen.getByTestId('availability').textContent).toBe('available');
+    expect(screen.getByTestId('availability').textContent).toBe('available:visible');
   });
 });

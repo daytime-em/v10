@@ -1,7 +1,11 @@
+import { getTimeRangeEnd } from '@videojs/media';
 import { isUndefined } from '@videojs/utils/predicate';
-import type { AnyPlayerStore } from '../media/types';
+
+import type { HotkeyActionName } from '../../core/ui/hotkey/core';
 import { MEDIA_INPUT_ACTION_OVERRIDES } from '../media-actions';
+import type { AnyPlayerStore } from '../player';
 import {
+  selectBuffer,
   selectFullscreen,
   selectPiP,
   selectPlayback,
@@ -10,17 +14,7 @@ import {
   selectVolume,
 } from '../store/selectors';
 
-export type HotkeyActionName =
-  | 'togglePaused'
-  | 'toggleMuted'
-  | 'toggleFullscreen'
-  | 'toggleSubtitles'
-  | 'togglePictureInPicture'
-  | 'seekStep'
-  | 'volumeStep'
-  | 'speedUp'
-  | 'speedDown'
-  | 'seekToPercent';
+export type { HotkeyActionName } from '../../core/ui/hotkey/core';
 
 export interface HotkeyActionContext {
   store: AnyPlayerStore;
@@ -39,6 +33,7 @@ const HOTKEY_ACTIONS: Record<HotkeyActionName, HotkeyActionResolver> = {
   togglePaused({ store }) {
     const playback = selectPlayback(store.state);
     if (!playback) return;
+
     playback.paused ? playback.play() : playback.pause();
   },
 
@@ -49,6 +44,7 @@ const HOTKEY_ACTIONS: Record<HotkeyActionName, HotkeyActionResolver> = {
   toggleFullscreen({ store }) {
     const fs = selectFullscreen(store.state);
     if (!fs) return;
+
     fs.fullscreen ? fs.exitFullscreen() : fs.requestFullscreen();
   },
 
@@ -59,6 +55,7 @@ const HOTKEY_ACTIONS: Record<HotkeyActionName, HotkeyActionResolver> = {
   togglePictureInPicture({ store }) {
     const pip = selectPiP(store.state);
     if (!pip) return;
+
     pip.pip ? pip.exitPictureInPicture() : pip.requestPictureInPicture();
   },
 
@@ -72,7 +69,11 @@ const HOTKEY_ACTIONS: Record<HotkeyActionName, HotkeyActionResolver> = {
 
   seekToPercent({ store, value, key }) {
     const time = selectTime(store.state);
-    if (!time || time.duration <= 0) return;
+    if (!time) return;
+
+    const buffer = selectBuffer(store.state);
+    const duration = getTimeRangeEnd({ duration: time.duration, seekable: buffer?.seekable ?? [] });
+    if (duration <= 0) return;
 
     let percent: number;
 
@@ -84,7 +85,7 @@ const HOTKEY_ACTIONS: Record<HotkeyActionName, HotkeyActionResolver> = {
       return;
     }
 
-    time.seek((percent / 100) * time.duration);
+    time.seek((percent / 100) * duration);
   },
 };
 

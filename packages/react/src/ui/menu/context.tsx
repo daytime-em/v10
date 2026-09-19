@@ -1,65 +1,69 @@
-'use client';
-
-import type { MenuCore, MenuState, StateAttrMap } from '@videojs/core';
-import type { MediaContainer, MenuApi, PositioningBoundary } from '@videojs/core/dom';
-import { createContext, useContext } from 'react';
-
-import type { MenuItemSettingType } from './menu-item-type';
+import type { MenuCore, MenuOptionState, MenuState } from '@videojs/core';
+import type { MediaContainer, MenuApi, MenuPopupApi, PositioningBoundary } from '@videojs/core/dom';
+import { createContext, useContext, useLayoutEffect, useState } from 'react';
 
 export interface MenuContextValue {
   core: MenuCore;
   menu: MenuApi;
+  parent: MenuContextValue | null;
   state: MenuState;
-  stateAttrMap: StateAttrMap<MenuState>;
+  preferredSide: MenuState['side'];
+  setPositionedSide: (side: MenuState['side']) => void;
   contentId: string;
   anchorName: string;
   boundary: PositioningBoundary;
   container: MediaContainer | null;
-  /** ID of the currently visible submenu, or null when at root view. */
-  activeSubMenuId: string | null;
-  /** Triggerer ID of the active submenu entry (for focus restoration on pop). */
-  activeSubMenuTriggerId: string | null;
-  /** Direction of the most recent navigation. */
-  navigationDirection: 'forward' | 'back';
-  /** Push a submenu onto the navigation stack. */
-  push: (menuId: string, triggerId: string) => void;
-  /** Pop the current submenu from the navigation stack. */
-  pop: () => void;
+  optionState: MenuOptionState | null;
+  setOptionState: (source: symbol, state: MenuOptionState | null) => void;
 }
 
 const MenuContext = createContext<MenuContextValue | null>(null);
 
 export const MenuContextProvider = MenuContext.Provider;
 
+/** Returns the current menu compound-component context. Throws outside `Menu.Root`. */
 export function useMenuContext(): MenuContextValue {
   const ctx = useContext(MenuContext);
   if (!ctx) throw new Error('Menu compound components must be used within a Menu.Root');
+
   return ctx;
 }
 
+/** Returns the nearest menu context, or `null` outside `Menu.Root`. */
 export function useOptionalMenuContext(): MenuContextValue | null {
   return useContext(MenuContext);
 }
 
-// ---------------------------------------------------------------------------
-// Sub-menu identity context — provided by a nested Menu.Root so child parts
-// (Trigger, Content) can read the submenu ID and access the parent menu for
-// push/pop and item registration.
-// ---------------------------------------------------------------------------
+/** Publishes a specialized option group's selected value and availability to its enclosing menu. */
+export function useMenuOptionState(state: MenuOptionState): void {
+  const menu = useOptionalMenuContext();
+  const setOptionState = menu?.setOptionState;
+  const [source] = useState(() => Symbol('menu-option'));
+  const { value, disabled, hidden, availability } = state;
 
-export interface SubMenuContextValue {
-  /** Stable ID for this submenu (matches the contentId of the nested Root). */
-  subMenuId: string;
-  /** The parent menu's context — used by Trigger to register and push. */
-  parentMenu: MenuContextValue;
+  useLayoutEffect(() => {
+    if (!setOptionState) return undefined;
+
+    setOptionState(source, { value, disabled, hidden, availability });
+
+    return () => setOptionState(source, null);
+  }, [availability, disabled, hidden, setOptionState, source, value]);
 }
 
-const SubMenuContext = createContext<SubMenuContextValue | null>(null);
+export interface MenuPopupContextValue {
+  popup: MenuPopupApi;
+  element: HTMLElement | null;
+}
 
-export const SubMenuContextProvider = SubMenuContext.Provider;
+const MenuPopupContext = createContext<MenuPopupContextValue | null>(null);
 
-export function useSubMenuContext(): SubMenuContextValue | null {
-  return useContext(SubMenuContext);
+export const MenuPopupContextProvider = MenuPopupContext.Provider;
+
+export function useMenuPopupContext(): MenuPopupContextValue {
+  const ctx = useContext(MenuPopupContext);
+  if (!ctx) throw new Error('Menu.Content must be used within a Menu.Popup');
+
+  return ctx;
 }
 
 // ---------------------------------------------------------------------------
@@ -94,7 +98,16 @@ export const MenuRadioGroupContextProvider = MenuRadioGroupContext.Provider;
 export function useMenuRadioGroupContext(): MenuRadioGroupContextValue {
   const ctx = useContext(MenuRadioGroupContext);
   if (!ctx) throw new Error('Menu.RadioItem must be used within a Menu.RadioGroup');
+
   return ctx;
+}
+
+const MenuRadioItemContext = createContext(false);
+
+export const MenuRadioItemContextProvider = MenuRadioItemContext.Provider;
+
+export function useOptionalMenuRadioItemContext(): boolean {
+  return useContext(MenuRadioItemContext);
 }
 
 // ---------------------------------------------------------------------------
@@ -107,29 +120,4 @@ export const MenuTriggerChildContextProvider = MenuTriggerChildContext.Provider;
 
 export function useOptionalMenuTriggerChildContext(): boolean {
   return useContext(MenuTriggerChildContext);
-}
-
-// ---------------------------------------------------------------------------
-// Menu item setting context — provided by Menu.Item or Menu.Trigger when `type`
-// is set; consumed by Menu.ItemValue.
-// ---------------------------------------------------------------------------
-
-export interface MenuItemSettingContextValue {
-  type: MenuItemSettingType;
-  label: string;
-  availability: 'available' | 'unavailable';
-}
-
-const MenuItemSettingContext = createContext<MenuItemSettingContextValue | null>(null);
-
-export const MenuItemSettingContextProvider = MenuItemSettingContext.Provider;
-
-export function useMenuItemSettingContext(): MenuItemSettingContextValue {
-  const ctx = useContext(MenuItemSettingContext);
-  if (!ctx) throw new Error('Menu.ItemValue must be used within a Menu.Item or Menu.Trigger with `type` set');
-  return ctx;
-}
-
-export function useOptionalMenuItemSettingContext(): MenuItemSettingContextValue | null {
-  return useContext(MenuItemSettingContext);
 }

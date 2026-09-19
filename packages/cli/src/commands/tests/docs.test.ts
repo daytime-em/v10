@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from 'vite-plus/test';
 
 // --- Fixtures ---
 
@@ -23,7 +23,7 @@ const REGULAR_DOC = `# Skins
 Video.js comes with several skins.`;
 
 const LLMS_TXT = `# Video.js Docs
-/how-to/installation
+/guides/installation
 /concepts/skins`;
 
 // --- Mocks ---
@@ -50,6 +50,8 @@ vi.mock('@clack/prompts', () => ({
 }));
 
 import * as p from '@clack/prompts';
+
+import cdnPackage from '../../../../cdn/package.json' with { type: 'json' };
 import { getConfigValue } from '../../utils/config.js';
 import { docExistsInAnyFramework, readBundledDoc, readLlmsTxt } from '../../utils/docs.js';
 import { handleDocs } from '../docs.js';
@@ -89,13 +91,15 @@ beforeEach(() => {
   });
 
   (readBundledDoc as Mock).mockImplementation((_fw: string, slug: string) => {
-    if (slug === 'how-to/installation') return INSTALLATION_DOC;
+    if (slug === 'guides/installation') return INSTALLATION_DOC;
+
     if (slug === 'concepts/skins') return REGULAR_DOC;
+
     return null;
   });
   (readLlmsTxt as Mock).mockReturnValue(LLMS_TXT);
   (docExistsInAnyFramework as Mock).mockImplementation((slug: string) =>
-    ['how-to/installation', 'concepts/skins'].includes(slug)
+    ['guides/installation', 'concepts/skins'].includes(slug)
   );
   (getConfigValue as Mock).mockReturnValue(undefined);
 });
@@ -119,7 +123,7 @@ describe('handleDocs', () => {
     it('prints llms.txt for the given framework', async () => {
       await handleDocs({ list: true, framework: 'html' }, []);
       expect(output()).toContain('Video.js Docs');
-      expect(output()).toContain('/how-to/installation');
+      expect(output()).toContain('/guides/installation');
     });
   });
 
@@ -147,22 +151,41 @@ describe('handleDocs', () => {
     });
 
     it('errors with invalid preset', async () => {
-      await expect(handleDocs({ framework: 'html', preset: 'livestream' }, ['how-to/installation'])).rejects.toThrow(
+      await expect(handleDocs({ framework: 'html', preset: 'livestream' }, ['guides/installation'])).rejects.toThrow(
         ExitError
       );
       expect(errors()).toContain('Invalid preset: "livestream"');
+      expect(errors()).toContain('"live-video"');
     });
 
     it('errors with invalid skin', async () => {
       await expect(
-        handleDocs({ framework: 'html', preset: 'video', skin: 'custom' }, ['how-to/installation'])
+        handleDocs({ framework: 'html', preset: 'video', skin: 'custom' }, ['guides/installation'])
       ).rejects.toThrow(ExitError);
       expect(errors()).toContain('Invalid skin: "custom"');
     });
 
+    it('errors when the media type is not valid for the preset', async () => {
+      await expect(
+        handleDocs(
+          {
+            framework: 'html',
+            preset: 'live-audio',
+            skin: 'default',
+            media: 'html5-video',
+            'source-url': '',
+            'install-method': 'npm',
+          },
+          ['guides/installation']
+        )
+      ).rejects.toThrow(ExitError);
+      expect(errors()).toContain('Invalid media type "html5-video" for the "live-audio" preset');
+      expect(errors()).toContain('mux-audio');
+    });
+
     it('errors with invalid install method for framework', async () => {
       await expect(
-        handleDocs({ framework: 'react', 'install-method': 'cdn' }, ['how-to/installation'])
+        handleDocs({ framework: 'react', 'install-method': 'cdn' }, ['guides/installation'])
       ).rejects.toThrow(ExitError);
       expect(errors()).toContain('Invalid install method: "cdn"');
     });
@@ -172,6 +195,7 @@ describe('handleDocs', () => {
     it('prints version header followed by markdown content', async () => {
       await handleDocs({ framework: 'html' }, ['concepts/skins']);
       const out = output();
+
       expect(out).toContain('@videojs/cli v');
       expect(out).toContain('# Skins');
       expect(out).toContain('Video.js comes with several skins');
@@ -200,12 +224,14 @@ describe('handleDocs', () => {
     });
 
     describe('HTML framework', () => {
-      it('generates npm installation with JS imports and HTML sections', async () => {
-        await handleDocs(htmlFlags(), ['how-to/installation']);
+      it('generates npm installation with TypeScript imports and HTML sections', async () => {
+        await handleDocs(htmlFlags(), ['guides/installation']);
         const out = output();
+
         expect(out).toContain('## Install Video.js');
         expect(out).toContain('npm install @videojs/html');
-        expect(out).toContain('## JavaScript imports');
+        expect(out).toContain('## TypeScript imports');
+        expect(out).toContain('```ts');
         expect(out).toContain('## HTML');
         expect(out).toContain('<video-player>');
         expect(out).not.toContain('<!-- cli:replace');
@@ -215,97 +241,143 @@ describe('handleDocs', () => {
         expect(out).toContain('## Next steps');
       });
 
-      it('generates CDN installation without JS imports section', async () => {
-        await handleDocs(htmlFlags({ 'install-method': 'cdn' }), ['how-to/installation']);
+      it('generates CDN installation without TypeScript imports section', async () => {
+        await handleDocs(htmlFlags({ 'install-method': 'cdn' }), ['guides/installation']);
         const out = output();
+
         expect(out).toContain('## Install Video.js');
         expect(out).toContain('<script');
-        expect(out).not.toContain('## JavaScript imports');
+        expect(out).not.toContain('## TypeScript imports');
         expect(out).toContain('## HTML');
       });
 
       it('switches install command for pnpm', async () => {
-        await handleDocs(htmlFlags({ 'install-method': 'pnpm' }), ['how-to/installation']);
+        await handleDocs(htmlFlags({ 'install-method': 'pnpm' }), ['guides/installation']);
         expect(output()).toContain('pnpm add @videojs/html');
       });
 
       it('generates audio preset with audio-specific elements', async () => {
         await handleDocs(htmlFlags({ preset: 'audio', skin: 'default', media: 'html5-audio' }), [
-          'how-to/installation',
+          'guides/installation',
         ]);
         expect(output()).toContain('audio-player');
       });
 
       it('generates minimal skin variant', async () => {
-        await handleDocs(htmlFlags({ skin: 'minimal' }), ['how-to/installation']);
+        await handleDocs(htmlFlags({ skin: 'minimal' }), ['guides/installation']);
         expect(output()).toContain('minimal');
       });
 
       it('generates headless (no skin) variant with skin none', async () => {
-        await handleDocs(htmlFlags({ skin: 'none' }), ['how-to/installation']);
+        await handleDocs(htmlFlags({ skin: 'none' }), ['guides/installation']);
         const out = output();
+
         expect(out).toContain('<video-player>');
         expect(out).not.toContain('<video-skin>');
         expect(out).not.toContain("'@videojs/html/video/skin'");
       });
 
       it('includes custom source URL in generated code', async () => {
-        await handleDocs(htmlFlags({ 'source-url': 'https://example.com/my-video.mp4' }), ['how-to/installation']);
+        await handleDocs(htmlFlags({ 'source-url': 'https://example.com/my-video.mp4' }), ['guides/installation']);
         expect(output()).toContain('https://example.com/my-video.mp4');
       });
 
       it('uses demo URLs when source-url is empty', async () => {
-        await handleDocs(htmlFlags({ 'source-url': '' }), ['how-to/installation']);
+        await handleDocs(htmlFlags({ 'source-url': '' }), ['guides/installation']);
         expect(output()).toMatch(/stream\.mux\.com|mux\.com/);
       });
 
       it('generates background-video preset', async () => {
         await handleDocs(htmlFlags({ preset: 'background-video', skin: 'default', media: 'background-video' }), [
-          'how-to/installation',
+          'guides/installation',
         ]);
         expect(output()).toContain('background-video-player');
       });
 
       it('generates DASH media variant', async () => {
-        await handleDocs(htmlFlags({ media: 'dash' }), ['how-to/installation']);
+        await handleDocs(htmlFlags({ media: 'dash' }), ['guides/installation']);
         const out = output();
+
         expect(out).toContain('<dash-video src=');
         expect(out).toContain("import '@videojs/html/media/dash-video'");
       });
 
       it('generates Mux media variant', async () => {
-        await handleDocs(htmlFlags({ media: 'mux-video' }), ['how-to/installation']);
+        await handleDocs(htmlFlags({ media: 'mux-video' }), ['guides/installation']);
         const out = output();
+
         expect(out).toContain('<mux-video src=');
         expect(out).toContain("import '@videojs/html/media/mux-video'");
+        expect(out).toContain('<mux-data></mux-data>');
+        expect(out).toContain("import '@videojs/html/extensions/mux-data'");
       });
 
       it('generates Vimeo media variant via npm', async () => {
-        await handleDocs(htmlFlags({ media: 'vimeo' }), ['how-to/installation']);
+        await handleDocs(htmlFlags({ media: 'vimeo' }), ['guides/installation']);
         const out = output();
+
         expect(out).toContain('<vimeo-video src=');
         expect(out).toContain("import '@videojs/html/media/vimeo-video'");
       });
 
-      it('generates a CDN media script for renderers with a CDN build (mux)', async () => {
-        await handleDocs(htmlFlags({ media: 'mux-video', 'install-method': 'cdn' }), ['how-to/installation']);
+      it('generates YouTube media variant via npm', async () => {
+        await handleDocs(htmlFlags({ media: 'youtube' }), ['guides/installation']);
         const out = output();
+
+        expect(out).toContain('<youtube-video src=');
+        expect(out).toContain("import '@videojs/html/media/youtube-video'");
+      });
+
+      it('generates Spotify media variant for the audio preset', async () => {
+        await handleDocs(htmlFlags({ preset: 'audio', skin: 'default', media: 'spotify' }), ['guides/installation']);
+        const out = output();
+
+        expect(out).toContain('<spotify-audio src=');
+        expect(out).toContain("import '@videojs/html/media/spotify-audio'");
+      });
+
+      it('generates a CDN media script for renderers with a CDN build (mux)', async () => {
+        await handleDocs(htmlFlags({ media: 'mux-video', 'install-method': 'cdn' }), ['guides/installation']);
+        const out = output();
+
         expect(out).toContain('<script');
         expect(out).toContain('media/mux-video.js');
+        expect(out).toContain('extensions/mux-data.js');
       });
 
       it('errors when requesting CDN for a renderer without a CDN build (vimeo)', async () => {
         await expect(
-          handleDocs(htmlFlags({ media: 'vimeo', 'install-method': 'cdn' }), ['how-to/installation'])
+          handleDocs(htmlFlags({ media: 'vimeo', 'install-method': 'cdn' }), ['guides/installation'])
         ).rejects.toThrow(ExitError);
         expect(errors()).toContain('no CDN build');
+      });
+
+      it('generates the live-video preset', async () => {
+        await handleDocs(htmlFlags({ preset: 'live-video', media: 'hls' }), ['guides/installation']);
+        const out = output();
+
+        expect(out).toContain('<live-video-player>');
+        expect(out).toContain('<live-video-skin>');
+        expect(out).toContain("import '@videojs/html/live-video/player'");
+        expect(out).toContain("import '@videojs/html/media/hlsjs-video'");
+      });
+
+      it('generates a CDN script for the live-video preset', async () => {
+        await handleDocs(htmlFlags({ preset: 'live-video', media: 'hls', 'install-method': 'cdn' }), [
+          'guides/installation',
+        ]);
+        const out = output();
+
+        expect(out).toContain(`@videojs/cdn@${cdnPackage.version}/live-video.js`);
+        expect(out).toContain('media/hlsjs-video.js');
       });
     });
 
     describe('React framework', () => {
       it('generates npm installation with create and use sections', async () => {
-        await handleDocs(reactFlags(), ['how-to/installation']);
+        await handleDocs(reactFlags(), ['guides/installation']);
         const out = output();
+
         expect(out).toContain('## Install Video.js');
         expect(out).toContain('npm install @videojs/react');
         expect(out).toContain('## Create your player');
@@ -314,8 +386,16 @@ describe('handleDocs', () => {
       });
 
       it('generates HLS media variant', async () => {
-        await handleDocs(reactFlags({ media: 'hls' }), ['how-to/installation']);
+        await handleDocs(reactFlags({ media: 'hls' }), ['guides/installation']);
         expect(output()).toContain('hls');
+      });
+
+      it('generates the live-audio preset with its player and skin', async () => {
+        await handleDocs(reactFlags({ preset: 'live-audio', media: 'mux-audio' }), ['guides/installation']);
+        const out = output();
+
+        expect(out).toContain('<LiveAudioPlayer>');
+        expect(out).toContain('<LiveAudioSkin>');
       });
     });
   });
@@ -344,7 +424,7 @@ describe('handleDocs', () => {
           'source-url': '',
           'install-method': 'npm',
         },
-        ['how-to/installation']
+        ['guides/installation']
       );
       expect(p.intro).not.toHaveBeenCalled();
       expect(p.select).not.toHaveBeenCalled();
@@ -358,7 +438,7 @@ describe('handleDocs', () => {
         .mockResolvedValueOnce('npm'); // installMethod
       (p.text as Mock).mockResolvedValueOnce(''); // sourceUrl
 
-      await handleDocs({ framework: 'html', preset: 'video' }, ['how-to/installation']);
+      await handleDocs({ framework: 'html', preset: 'video' }, ['guides/installation']);
 
       expect(p.intro).toHaveBeenCalledWith('Video.js Installation');
       expect(p.select).toHaveBeenCalled();
@@ -372,7 +452,7 @@ describe('handleDocs', () => {
         .mockResolvedValueOnce('hls') // media (user confirms detection hint)
         .mockResolvedValueOnce('npm'); // installMethod
 
-      await handleDocs({ framework: 'html', 'source-url': 'https://example.com/video.m3u8' }, ['how-to/installation']);
+      await handleDocs({ framework: 'html', 'source-url': 'https://example.com/video.m3u8' }, ['guides/installation']);
 
       expect(p.intro).toHaveBeenCalled();
       expect(p.select).toHaveBeenCalled();

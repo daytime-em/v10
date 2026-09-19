@@ -1,27 +1,43 @@
 {
   "name": "@videojs/react",
-  "type": "module",
-  "version": "10.0.0-beta.24",
+  "version": "10.0.0-rc.2",
   "description": "React library for building media players",
+  "keywords": [
+    "components",
+    "hooks",
+    "media",
+    "player",
+    "react",
+    "videojs"
+  ],
+  "homepage": "https://videojs.org",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/videojs/v10",
     "directory": "packages/react"
   },
-  "main": "dist/default/index.js",
-  "module": "dist/default/index.js",
-  "types": "dist/dev/index.d.ts",
-  "sideEffects": false,
   "files": [
     "dist",
     "docs"
   ],
+  "type": "module",
+  "sideEffects": [
+    "./dist/*/i18n/locales/*/register.js"
+  ],
+  "main": "dist/default/index.js",
+  "module": "dist/default/index.js",
+  "types": "dist/dev/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/dev/index.d.ts",
       "development": "./dist/dev/index.js",
       "default": "./dist/default/index.js"
+    },
+    "./ui/*-radio-group": {
+      "types": "./dist/dev/ui/*-radio-group/index.d.ts",
+      "development": "./dist/dev/ui/*-radio-group/index.js",
+      "default": "./dist/default/ui/*-radio-group/index.js"
     },
     "./*.css": "./dist/default/*.css",
     "./icons": {
@@ -33,6 +49,31 @@
       "types": "./dist/dev/icons/*/index.d.ts",
       "development": "./dist/dev/icons/*/index.js",
       "default": "./dist/default/icons/*/index.js"
+    },
+    "./extensions/*": {
+      "types": "./dist/dev/extensions/*/index.d.ts",
+      "development": "./dist/dev/extensions/*/index.js",
+      "default": "./dist/default/extensions/*/index.js"
+    },
+    "./media/mux-video/hls-js": {
+      "types": "./dist/dev/media/mux-video/hls-js.d.ts",
+      "development": "./dist/dev/media/mux-video/hls-js.js",
+      "default": "./dist/default/media/mux-video/hls-js.js"
+    },
+    "./media/mux-video/spf": {
+      "types": "./dist/dev/media/mux-video/spf.d.ts",
+      "development": "./dist/dev/media/mux-video/spf.js",
+      "default": "./dist/default/media/mux-video/spf.js"
+    },
+    "./media/mux-audio/hls-js": {
+      "types": "./dist/dev/media/mux-audio/hls-js.d.ts",
+      "development": "./dist/dev/media/mux-audio/hls-js.js",
+      "default": "./dist/default/media/mux-audio/hls-js.js"
+    },
+    "./media/mux-audio/spf": {
+      "types": "./dist/dev/media/mux-audio/spf.d.ts",
+      "development": "./dist/dev/media/mux-audio/spf.js",
+      "default": "./dist/default/media/mux-audio/spf.js"
     },
     "./media/*": {
       "types": "./dist/dev/media/*/index.d.ts",
@@ -93,47 +134,124 @@
       "types": "./dist/dev/presets/live-audio/*.d.ts",
       "development": "./dist/dev/presets/live-audio/*.js",
       "default": "./dist/default/presets/live-audio/*.js"
+    },
+    "./i18n": {
+      "types": "./dist/dev/i18n/index.d.ts",
+      "development": "./dist/dev/i18n/index.js",
+      "default": "./dist/default/i18n/index.js"
+    },
+    "./i18n/locales/*": {
+      "types": "./dist/dev/i18n/locales/*.d.ts",
+      "development": "./dist/dev/i18n/locales/*.js",
+      "default": "./dist/default/i18n/locales/*.js"
     }
-  },
-  "scripts": {
-    "build": "tsdown",
-    "build:watch": "tsdown --watch ./src --no-clean",
-    "dev": "pnpm build:watch",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "clean": "rimraf --glob dist docs types '*.tsbuildinfo'",
-    "prepack": "node --import tsx ../../site/scripts/copy-package-docs.ts react"
-  },
-  "peerDependencies": {
-    "react": "^18.0.0 || ^19.0.0",
-    "react-dom": "^18.0.0 || ^19.0.0"
-  },
-  "dependencies": {
-    "@videojs/core": "workspace:*",
-    "@videojs/spf": "workspace:*",
-    "@videojs/store": "workspace:*",
-    "@videojs/utils": "workspace:*"
-  },
-  "devDependencies": {
-    "@testing-library/react": "^16.3.0",
-    "@types/react": "^19.2.14",
-    "@videojs/icons": "workspace:*",
-    "@videojs/skins": "workspace:*",
-    "jsdom": "^26.1.0",
-    "react": "^19.2.4",
-    "react-dom": "^19.2.4",
-    "tsdown": "^0.21.9",
-    "vitest": "^4.1.0"
   },
   "publishConfig": {
     "access": "public"
   },
-  "keywords": [
-    "media",
-    "player",
-    "react",
-    "components",
-    "hooks",
-    "videojs"
-  ]
+  "scripts": {
+    "build:watch": "vp pack --watch ./src --no-clean",
+    "dev": "pnpm build:watch",
+    "test": "vp test run",
+    "test:watch": "vp test",
+    "clean": "rimraf --glob dist docs types '*.tsbuildinfo'",
+    "prepack": "node --import tsx ../../site/scripts/copy-package-docs.ts react"
+  },
+  "dependencies": {
+    "@videojs/core": "workspace:*",
+    "@videojs/media": "workspace:*",
+    "@videojs/native-hls-video": "workspace:*",
+    "@videojs/spf": "workspace:*",
+    "@videojs/store": "workspace:*",
+    "@videojs/utils": "workspace:*",
+    "react-compiler-runtime": "^1.0.0"
+  },
+  "devDependencies": {
+    "@testing-library/react": "^16.3.0",
+    "@types/react": "^19.2.17",
+    "@videojs/cloudflare-video": "workspace:*",
+    "@videojs/dash-video": "workspace:*",
+    "@videojs/google-cast": "workspace:*",
+    "@videojs/hlsjs-video": "workspace:*",
+    "@videojs/icons": "workspace:*",
+    "@videojs/mux-audio": "workspace:*",
+    "@videojs/mux-data": "workspace:*",
+    "@videojs/mux-video": "workspace:*",
+    "@videojs/shaka-video": "workspace:*",
+    "@videojs/spf": "workspace:*",
+    "@videojs/spotify-audio": "workspace:*",
+    "@videojs/tiktok-video": "workspace:*",
+    "@videojs/twitch-video": "workspace:*",
+    "@videojs/vimeo-video": "workspace:*",
+    "@videojs/wistia-video": "workspace:*",
+    "@videojs/youtube-video": "workspace:*",
+    "jsdom": "^26.1.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "typescript": "6.0.2",
+    "vite-plus": "catalog:",
+    "vitest": "catalog:"
+  },
+  "peerDependencies": {
+    "@videojs/cloudflare-video": "workspace:*",
+    "@videojs/dash-video": "workspace:*",
+    "@videojs/google-cast": "workspace:*",
+    "@videojs/hlsjs-video": "workspace:*",
+    "@videojs/mux-audio": "workspace:*",
+    "@videojs/mux-data": "workspace:*",
+    "@videojs/mux-video": "workspace:*",
+    "@videojs/shaka-video": "workspace:*",
+    "@videojs/spotify-audio": "workspace:*",
+    "@videojs/tiktok-video": "workspace:*",
+    "@videojs/twitch-video": "workspace:*",
+    "@videojs/vimeo-video": "workspace:*",
+    "@videojs/wistia-video": "workspace:*",
+    "@videojs/youtube-video": "workspace:*",
+    "react": "^18.0.0 || ^19.0.0",
+    "react-dom": "^18.0.0 || ^19.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@videojs/cloudflare-video": {
+      "optional": true
+    },
+    "@videojs/dash-video": {
+      "optional": true
+    },
+    "@videojs/google-cast": {
+      "optional": true
+    },
+    "@videojs/hlsjs-video": {
+      "optional": true
+    },
+    "@videojs/mux-audio": {
+      "optional": true
+    },
+    "@videojs/mux-data": {
+      "optional": true
+    },
+    "@videojs/mux-video": {
+      "optional": true
+    },
+    "@videojs/shaka-video": {
+      "optional": true
+    },
+    "@videojs/spotify-audio": {
+      "optional": true
+    },
+    "@videojs/tiktok-video": {
+      "optional": true
+    },
+    "@videojs/twitch-video": {
+      "optional": true
+    },
+    "@videojs/vimeo-video": {
+      "optional": true
+    },
+    "@videojs/wistia-video": {
+      "optional": true
+    },
+    "@videojs/youtube-video": {
+      "optional": true
+    }
+  }
 }

@@ -1,5 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vite-plus/test';
+
 import type { ComponentReference } from '@/types/component-reference';
+
 import { buildComponentReferenceTocHeadings, createComponentReferenceModel } from '../componentReferenceModel';
 
 describe('createComponentReferenceModel', () => {
@@ -47,6 +49,40 @@ describe('createComponentReferenceModel', () => {
     });
   });
 
+  it('adds an HTML-only events section', () => {
+    const apiReference = {
+      name: 'Slider',
+      props: {},
+      state: {},
+      dataAttributes: {},
+      cssCustomProperties: {},
+      platforms: {
+        html: {
+          tagName: 'media-slider',
+          events: [{ name: 'value-change', description: 'Fired when the value changes.' }],
+        },
+      },
+    } satisfies ComponentReference;
+
+    const model = createComponentReferenceModel('Slider', apiReference);
+
+    expect(model?.sections).toEqual([
+      {
+        key: 'events',
+        title: 'Events',
+        id: 'events',
+        depth: 3,
+        frameworks: ['html'],
+      },
+    ]);
+    expect(buildComponentReferenceTocHeadings(model)).toContainEqual({
+      depth: 3,
+      text: 'Events',
+      slug: 'events',
+      frameworks: ['html'],
+    });
+  });
+
   it('builds a multi-part model with framework-specific labels and H4 section ids', () => {
     const apiReference = {
       name: 'Controls',
@@ -89,7 +125,7 @@ describe('createComponentReferenceModel', () => {
           },
         },
       },
-    };
+    } satisfies ComponentReference;
 
     const model = createComponentReferenceModel('Controls', apiReference);
 
@@ -223,7 +259,7 @@ describe('buildComponentReferenceTocHeadings', () => {
         trigger: {
           name: 'Trigger',
           props: {
-            onClick: { type: '() => void' },
+            onClick: { type: '() => void', frameworks: ['react'] },
           },
           state: {},
           dataAttributes: {},
@@ -233,7 +269,7 @@ describe('buildComponentReferenceTocHeadings', () => {
           },
         },
       },
-    };
+    } satisfies ComponentReference;
 
     const model = createComponentReferenceModel('Popover', apiReference);
     const headings = buildComponentReferenceTocHeadings(model);
@@ -258,5 +294,47 @@ describe('buildComponentReferenceTocHeadings', () => {
         frameworks: ['react'],
       },
     ]);
+  });
+
+  it('restricts a shared part props section to its prop frameworks', () => {
+    const apiReference = {
+      name: 'TimeSlider',
+      props: {},
+      state: {},
+      dataAttributes: {},
+      cssCustomProperties: {},
+      platforms: {},
+      parts: {
+        chapters: {
+          name: 'Chapters',
+          props: {
+            renderChapter: { type: '() => ReactElement', frameworks: ['react'] },
+          },
+          state: {},
+          dataAttributes: {},
+          cssCustomProperties: {},
+          platforms: {
+            html: { tagName: 'media-time-slider-chapters' },
+            react: {},
+          },
+        },
+      },
+    } satisfies ComponentReference;
+
+    const model = createComponentReferenceModel('TimeSlider', apiReference);
+
+    expect(model?.parts[0]?.sections).toMatchObject([
+      {
+        key: 'props',
+        frameworks: ['react'],
+      },
+    ]);
+    expect(buildComponentReferenceTocHeadings(model)).toContainEqual({
+      depth: 4,
+      text: 'Props',
+      slug: 'chapters-props',
+      tocKind: 'api-reference-subsection',
+      frameworks: ['react'],
+    });
   });
 });

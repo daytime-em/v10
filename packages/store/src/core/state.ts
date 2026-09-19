@@ -1,4 +1,5 @@
 import { noop } from '@videojs/utils/function';
+import { shallowEqual } from '@videojs/utils/object';
 
 export type StateChange = () => void;
 
@@ -15,11 +16,14 @@ export interface State<T> {
 
 export interface WritableState<T> extends State<T> {
   patch: (partial: Partial<T>) => void;
+  replace: (next: T) => void;
 }
 
 let isFlushScheduled = false;
+
 function scheduleFlush(): void {
   if (isFlushScheduled) return;
+
   isFlushScheduled = true;
   queueMicrotask(flush);
 }
@@ -28,7 +32,9 @@ const pendingContainers = new Set<StateContainer<any>>();
 
 export function flush(): void {
   isFlushScheduled = false;
+
   for (const container of pendingContainers) container.flush();
+
   pendingContainers.clear();
 }
 
@@ -52,7 +58,7 @@ class StateContainer<T> implements WritableState<T> {
 
     let changed = false;
 
-    for (const key in partial) {
+    for (const key of Reflect.ownKeys(partial as object) as (keyof T)[]) {
       if (!hasOwnProp.call(partial, key)) continue;
 
       const value = partial[key];
@@ -69,6 +75,15 @@ class StateContainer<T> implements WritableState<T> {
     }
   }
 
+  replace(next: T): void {
+    // Example: media metadata can change under a user override while the
+    // resolved title stays the same. Preserve the public snapshot in that case.
+    if (shallowEqual(this.#current, next)) return;
+
+    this.#current = Object.freeze({ ...next });
+    this.#markPending();
+  }
+
   subscribe(callback: StateChange, options?: SubscribeOptions): () => void {
     const signal = options?.signal;
     if (signal?.aborted) return noop;
@@ -80,6 +95,7 @@ class StateContainer<T> implements WritableState<T> {
     }
 
     const onAbort = () => this.#listeners.delete(callback);
+
     signal.addEventListener('abort', onAbort, { once: true });
 
     return () => {
@@ -90,7 +106,9 @@ class StateContainer<T> implements WritableState<T> {
 
   flush(): void {
     if (!this.#pending) return;
+
     this.#pending = false;
+
     for (const fn of this.#listeners) fn();
   }
 

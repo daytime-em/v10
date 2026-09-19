@@ -14,6 +14,7 @@ export function formatInstallationCode(opts: InstallationOptions): string {
   if (opts.framework === 'html') {
     return formatHTMLInstallation(opts);
   }
+
   return formatReactInstallation(opts);
 }
 
@@ -23,15 +24,16 @@ function formatHTMLInstallation(opts: InstallationOptions): string {
   const sections: string[] = [];
 
   sections.push('## Install Video.js\n');
+
   if (opts.installMethod === 'cdn') {
     sections.push(`\`\`\`html\n${install.cdn}\n\`\`\``);
   } else {
     sections.push(`\`\`\`bash\n${install[opts.installMethod]}\n\`\`\``);
   }
 
-  if (usage.js) {
-    sections.push('\n## JavaScript imports\n');
-    sections.push(`\`\`\`javascript\n${usage.js}\n\`\`\``);
+  if (usage.imports) {
+    sections.push('\n## TypeScript imports\n');
+    sections.push(`\`\`\`ts\n${usage.imports}\n\`\`\``);
   }
 
   sections.push('\n## HTML\n');
@@ -41,9 +43,10 @@ function formatHTMLInstallation(opts: InstallationOptions): string {
 }
 
 function formatReactInstallation(opts: InstallationOptions): string {
-  const install = generateReactInstallCode();
+  const install = generateReactInstallCode(opts);
   const create = generateReactCreateCode(opts);
   const usage = generateReactUsageCode(opts);
+
   const sections: string[] = [];
 
   if (opts.installMethod === 'cdn') {

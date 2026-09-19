@@ -1,7 +1,11 @@
-// Github, Linkedin, Twitter are deprecated brand icons (lucide-icons/lucide#670).
-// Lucide will remove them in v1.0 — replace with simple-icons or custom SVGs then.
-import { AtSign, Github, Globe, Linkedin, Twitter } from 'lucide-react';
 import { Fragment } from 'react';
+
+import AtSign from '@/assets/icons/at-sign.svg?react';
+import Globe from '@/assets/icons/globe.svg?react';
+import Github from '@/assets/logos/brands/github.svg?react';
+import Linkedin from '@/assets/logos/brands/linkedin.svg?react';
+import Twitter from '@/assets/logos/brands/x-twitter.svg?react';
+
 import { Tooltip, TooltipProvider } from '../Tooltip';
 
 interface SocialLinks {
@@ -47,10 +51,7 @@ const SOCIAL_CONFIGS = {
 
 export function AuthorSocialLinks({ socialLinks, className }: AuthorSocialLinksProps) {
   const links = Object.entries(socialLinks).filter(([_, url]) => url) as Array<[keyof SocialLinks, string]>;
-
-  if (links.length === 0) {
-    return null;
-  }
+  if (links.length === 0) return null;
 
   return (
     <TooltipProvider>
@@ -69,9 +70,9 @@ export function AuthorSocialLinks({ socialLinks, className }: AuthorSocialLinksP
                   target="_blank"
                   rel="noopener noreferrer"
                   aria-label={`${config.label} profile`}
-                  className="inline-flex items-center justify-center p-2 rounded-xs intent:text-warm-gray dark:intent:text-manila-50"
+                  className="intent:text-warm-gray dark:intent:text-manila-50 corner-squircle inline-flex items-center justify-center rounded-md p-2"
                 >
-                  <Icon size={20} strokeWidth={1.5} />
+                  <Icon className="size-4" aria-hidden="true" />
                 </a>
               </Tooltip>
             </li>

@@ -1,5 +1,222 @@
 # Changelog
 
+## [10.0.0-rc.2](https://github.com/videojs/v10/compare/@videojs/spf@10.0.0-rc.1...@videojs/spf@10.0.0-rc.2) (2026-09-09)
+
+
+### Miscellaneous Chores
+
+* **@videojs/spf:** Synchronize videojs versions
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @videojs/media bumped to 10.0.0-rc.2
+    * @videojs/utils bumped to 10.0.0-rc.2
+
+## [10.0.0-rc.1](https://github.com/videojs/v10/compare/@videojs/spf@10.0.0-beta.32...@videojs/spf@10.0.0-rc.1) (2026-09-08)
+
+
+### ⚠ BREAKING CHANGES
+
+* **packages:** adapter renaming ([#2602](https://github.com/videojs/v10/issues/2602))
+* **packages:** playback adapters packages ([#2567](https://github.com/videojs/v10/issues/2567))
+
+### Bug Fixes
+
+* **spf:** never adopt the UA-default preload on attach ([#2534](https://github.com/videojs/v10/issues/2534)) ([5ed7e4c](https://github.com/videojs/v10/commit/5ed7e4c29b63432049c4b15d934327793c796057))
+* **spf:** probe codec support through ManagedMediaSource where classic MSE is absent ([#2564](https://github.com/videojs/v10/issues/2564)) ([4161db6](https://github.com/videojs/v10/commit/4161db6d0905ce4e8664b8edc841d60ecf10b302))
+
+
+### Code Refactoring
+
+* **packages:** adapter renaming ([#2602](https://github.com/videojs/v10/issues/2602)) ([b964889](https://github.com/videojs/v10/commit/b964889fdf68a4cdaf4686ef96bb0e8c8f2f4abd))
+* **packages:** playback adapters packages ([#2567](https://github.com/videojs/v10/issues/2567)) ([12b08e3](https://github.com/videojs/v10/commit/12b08e3b0c3c07e5948f74a8cf6fce96c8b8eba7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @videojs/media bumped to 10.0.0-rc.1
+    * @videojs/utils bumped to 10.0.0-rc.1
+
+## [10.0.0-beta.32](https://github.com/videojs/v10/compare/@videojs/spf@10.0.0-beta.31...@videojs/spf@10.0.0-beta.32) (2026-08-26)
+
+
+### Features
+
+* **spf:** keep track selection within the initial codec family ([#2289](https://github.com/videojs/v10/issues/2289)) ([a55c539](https://github.com/videojs/v10/commit/a55c5397e12b77099694b9eef40db3b5290f47f7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @videojs/media bumped to 10.0.0-beta.32
+    * @videojs/utils bumped to 10.0.0-beta.32
+
+## [10.0.0-beta.31](https://github.com/videojs/v10/compare/@videojs/spf@10.0.0-beta.30...@videojs/spf@10.0.0-beta.31) (2026-08-21)
+
+
+### Miscellaneous Chores
+
+* **@videojs/spf:** Synchronize videojs versions
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @videojs/media bumped to 10.0.0-beta.31
+    * @videojs/utils bumped to 10.0.0-beta.31
+
+## [10.0.0-beta.30](https://github.com/videojs/v10/compare/@videojs/spf@10.0.0-beta.29...@videojs/spf@10.0.0-beta.30) (2026-08-20)
+
+
+### Features
+
+* **spf:** Cap Rendition to Player Size ([#2242](https://github.com/videojs/v10/issues/2242)) ([357c3a4](https://github.com/videojs/v10/commit/357c3a4ba71155809e34db9f2d78694712283fe5))
+
+
+### Bug Fixes
+
+* **spf:** report a verdict when the background ladder is undecodable ([#2286](https://github.com/videojs/v10/issues/2286)) ([57b8148](https://github.com/videojs/v10/commit/57b8148bba30f41ab7f1ec95842f7299351656c3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @videojs/media bumped to 10.0.0-beta.30
+    * @videojs/utils bumped to 10.0.0-beta.30
+
+## [10.0.0-beta.29](https://github.com/videojs/v10/compare/@videojs/spf@10.0.0-beta.28...@videojs/spf@10.0.0-beta.29) (2026-08-19)
+
+
+### ⚠ BREAKING CHANGES
+
+* **spf:** cap renditions to the screen and surface unplayable sources ([#2135](https://github.com/videojs/v10/issues/2135))
+
+### Features
+
+* **packages:** make Mux and Vimeo content-data donors ([#1998](https://github.com/videojs/v10/issues/1998)) ([7940b2c](https://github.com/videojs/v10/commit/7940b2c4030d9582551a335eabc59b9a7979c52b))
+* **spf:** cap renditions to the screen and surface unplayable sources ([#2135](https://github.com/videojs/v10/issues/2135)) ([20c1464](https://github.com/videojs/v10/commit/20c14648b8342aec91c07e4a743949488ff62939))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @videojs/media bumped to 10.0.0-beta.29
+    * @videojs/utils bumped to 10.0.0-beta.29
+
+## [10.0.0-beta.28](https://github.com/videojs/v10/compare/@videojs/spf@10.0.0-beta.27...@videojs/spf@10.0.0-beta.28) (2026-08-19)
+
+
+### Miscellaneous Chores
+
+* **@videojs/spf:** Synchronize videojs versions
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @videojs/media bumped to 10.0.0-beta.28
+    * @videojs/utils bumped to 10.0.0-beta.28
+
+## [10.0.0-beta.27](https://github.com/videojs/v10/compare/@videojs/spf@10.0.0-beta.26...@videojs/spf@10.0.0-beta.27) (2026-08-17)
+
+
+### ⚠ BREAKING CHANGES
+
+* **packages:** rename the SPF background-video Media to hls-background-video ([#2097](https://github.com/videojs/v10/issues/2097))
+* **packages:** rename SimpleHls* to Hls* (video + audio) ([#2096](https://github.com/videojs/v10/issues/2096))
+* **packages:** add <mux-background-video> over the SPF background-video engine ([#2062](https://github.com/videojs/v10/issues/2062))
+* **spf:** add the SPF-backed Mux Media, elements, and components ([#2045](https://github.com/videojs/v10/issues/2045))
+* **packages:** relocate spf media facades ([#2033](https://github.com/videojs/v10/issues/2033))
+
+### Features
+
+* **packages:** add &lt;mux-background-video&gt; over the SPF background-video engine ([#2062](https://github.com/videojs/v10/issues/2062)) ([8dc9562](https://github.com/videojs/v10/commit/8dc9562906e9fb05a56267899a005882d3167d40))
+* **spf:** add the SPF-backed Mux Media, elements, and components ([#2045](https://github.com/videojs/v10/issues/2045)) ([d1d1673](https://github.com/videojs/v10/commit/d1d1673ecd17e1ca1492abc5b396296bb8c7b176))
+* **spf:** live hls playback on the presentation-timeline model ([#1884](https://github.com/videojs/v10/issues/1884)) ([0ebb073](https://github.com/videojs/v10/commit/0ebb073b87cbceb5459b7a32dc09ed5026647d37))
+* **spf:** surface unsupported-source errors ([#1936](https://github.com/videojs/v10/issues/1936)) ([fe47f85](https://github.com/videojs/v10/commit/fe47f85b7bf79a02403206095604683d661db3c1))
+
+
+### Bug Fixes
+
+* link to CML in SPF ([#1814](https://github.com/videojs/v10/issues/1814)) ([33aeafe](https://github.com/videojs/v10/commit/33aeafe80fba941397f71b49c489b4ecaffe81fa))
+
+
+### Code Refactoring
+
+* **packages:** relocate spf media facades ([#2033](https://github.com/videojs/v10/issues/2033)) ([7ee7fa5](https://github.com/videojs/v10/commit/7ee7fa549777378c5e30cc6c151ab0d501538b83))
+* **packages:** rename SimpleHls* to Hls* (video + audio) ([#2096](https://github.com/videojs/v10/issues/2096)) ([f1c22a5](https://github.com/videojs/v10/commit/f1c22a5bbfd90e3ce219b8ac5de441c8fba60b8d))
+* **packages:** rename the SPF background-video Media to hls-background-video ([#2097](https://github.com/videojs/v10/issues/2097)) ([729261a](https://github.com/videojs/v10/commit/729261abbfa1cbc9ac882cd8a2f4456b14e685a3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @videojs/media bumped to 10.0.0-beta.27
+    * @videojs/utils bumped to 10.0.0-beta.27
+
+## [10.0.0-beta.26](https://github.com/videojs/v10/compare/@videojs/spf@10.0.0-beta.25...@videojs/spf@10.0.0-beta.26) (2026-08-02)
+
+
+### Features
+
+* **packages:** i18n ([#1708](https://github.com/videojs/v10/issues/1708)) ([028dadb](https://github.com/videojs/v10/commit/028dadb385eb4f879f80932a4002676dc11d5300))
+* **spf:** Added autoplay support ([#1880](https://github.com/videojs/v10/issues/1880)) ([b16f28f](https://github.com/videojs/v10/commit/b16f28fb74eee108a1a0eb94e7d83b2f5f11ba5b))
+* **spf:** airplay mse recovery ([#1888](https://github.com/videojs/v10/issues/1888)) ([c0a43ac](https://github.com/videojs/v10/commit/c0a43acb0e3af0108de0dc0ca61a23b5069d6812))
+* **spf:** expose media tracks on the SPF media adapter ([#1826](https://github.com/videojs/v10/issues/1826)) ([c83b044](https://github.com/videojs/v10/commit/c83b044986bb0a7445a2c54be18ff66cc96e1f66))
+* **spf:** relocate non-zero-PTS sources to a 0-based timeline (VOD) ([#1847](https://github.com/videojs/v10/issues/1847)) ([7fdc255](https://github.com/videojs/v10/commit/7fdc2559013527f5c5ace542b33b992c3929fcd8))
+
+
+### Bug Fixes
+
+* **spf:** load final segment when seeking to exact end ([#1828](https://github.com/videojs/v10/issues/1828)) ([#1852](https://github.com/videojs/v10/issues/1852)) ([12ae97d](https://github.com/videojs/v10/commit/12ae97ddba743fb6a8b4e09108f0928b2611e820))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @videojs/utils bumped to 10.0.0-beta.26
+
+## [10.0.0-beta.25](https://github.com/videojs/v10/compare/@videojs/spf@10.0.0-beta.24...@videojs/spf@10.0.0-beta.25) (2026-07-07)
+
+
+### Features
+
+* **site:** API reference pages for media elements ([#1342](https://github.com/videojs/v10/issues/1342)) ([d799be1](https://github.com/videojs/v10/commit/d799be1063518b85ad3f030bda07b9132e2db074))
+* **spf:** Add maxResolution to SPF Background Video ([#1654](https://github.com/videojs/v10/issues/1654)) ([33873bc](https://github.com/videojs/v10/commit/33873bc4ae9864b43961a2da666f11de4218bde3))
+* **spf:** background looping video (phase 1) ([#1602](https://github.com/videojs/v10/issues/1602)) ([3741e8d](https://github.com/videojs/v10/commit/3741e8de12bb214acd2bae8974092e875f17b7bc))
+* **spf:** basic audio only use case + use-case-composition doc-type + implementation skills ([#1584](https://github.com/videojs/v10/issues/1584)) ([1a3cb45](https://github.com/videojs/v10/commit/1a3cb45b292aad421fb7429451de59ef41a0a07b))
+* **spf:** capability probing ([#1676](https://github.com/videojs/v10/issues/1676)) ([bce79ec](https://github.com/videojs/v10/commit/bce79ec424cf39134284f4d7b142ab2eb9fe8a91))
+* **spf:** multi cdn failover ([#1671](https://github.com/videojs/v10/issues/1671)) ([b89f1e9](https://github.com/videojs/v10/commit/b89f1e944cdc8ee63e52095e712ed3e8f0bab236))
+* **spf:** multi-cdn support ([#1668](https://github.com/videojs/v10/issues/1668)) ([00aa624](https://github.com/videojs/v10/commit/00aa6247b8be5c539ecf76c636ae89b44a80ea1c))
+* **spf:** multi-track audio + skills building features and behaviors ([#1605](https://github.com/videojs/v10/issues/1605)) ([057f325](https://github.com/videojs/v10/commit/057f32573e5a5178e1508dd21fa5f98f05a4eb2a))
+* **spf:** text tracks switching ([#1687](https://github.com/videojs/v10/issues/1687)) ([23538e3](https://github.com/videojs/v10/commit/23538e364919bf290895972d821b9cd12d3e3e18))
+
+
+### Bug Fixes
+
+* **core:** disable toggle captions when there are no captions ([#1598](https://github.com/videojs/v10/issues/1598)) ([760870f](https://github.com/videojs/v10/commit/760870fdf28394021166df7f4ad575730dc65dbd))
+* **spf:** add emptied listener to track-current-time behavior ([#1634](https://github.com/videojs/v10/issues/1634)) ([efc7c23](https://github.com/videojs/v10/commit/efc7c23b7b692d0442530ecd3e57515af8b0afa1))
+* **spf:** refactor track switching to rules ([#1658](https://github.com/videojs/v10/issues/1658)) ([d9f9efd](https://github.com/videojs/v10/commit/d9f9efde88ace721a93e571c9ff3b00569208cb6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @videojs/utils bumped to 10.0.0-beta.25
+
 ## [10.0.0-beta.24](https://github.com/videojs/v10/compare/@videojs/spf@10.0.0-beta.23...@videojs/spf@10.0.0-beta.24) (2026-05-19)
 
 

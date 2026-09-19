@@ -1,9 +1,7 @@
-'use client';
-
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import type { MediaAudioTrack } from '@videojs/core';
+import type { MediaAudioTrack } from '@videojs/media';
 import type { ReactNode } from 'react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
 
 import { createPlayerWrapper } from '../../../testing/mocks';
 import { Menu } from '../../menu';
@@ -27,9 +25,11 @@ function renderAudioTrackOptions({
 
   render(
     <Menu.Root defaultOpen align="center">
-      <Menu.Content data-testid="content">
-        <AudioTrackRadioGroup formatTrack={formatTrack} />
-      </Menu.Content>
+      <Menu.Popup>
+        <Menu.Content data-testid="content">
+          <AudioTrackRadioGroup formatTrack={formatTrack} />
+        </Menu.Content>
+      </Menu.Popup>
     </Menu.Root>,
     { wrapper: Wrapper }
   );
@@ -45,16 +45,19 @@ function AudioTrackRadioGroup({
   const audioTrack = useAudioTrackOptions(formatTrack ? { formatTrack } : undefined);
   if (!audioTrack) return null;
 
-  const { options, setValue, value } = audioTrack;
+  const { options, selectedLabel, setValue, value } = audioTrack;
 
   return (
-    <Menu.RadioGroup value={value} onValueChange={setValue} aria-label="Audio tracks">
-      {options.map((option) => (
-        <Menu.RadioItem key={option.value} value={option.value} disabled={option.disabled}>
-          {option.label}
-        </Menu.RadioItem>
-      ))}
-    </Menu.RadioGroup>
+    <>
+      <span data-testid="selected-label">{selectedLabel}</span>
+      <Menu.RadioGroup value={value} onValueChange={setValue} aria-label="Audio tracks">
+        {options.map((option) => (
+          <Menu.RadioItem key={option.value} value={option.value} disabled={option.disabled}>
+            {option.label}
+          </Menu.RadioItem>
+        ))}
+      </Menu.RadioGroup>
+    </>
   );
 }
 
@@ -64,10 +67,12 @@ describe('useAudioTrackOptions', () => {
 
     expect(screen.getByRole('menuitemradio', { name: 'English' }).getAttribute('aria-checked')).toBe('true');
     expect(screen.getByRole('menuitemradio', { name: 'Spanish' }).getAttribute('aria-checked')).toBe('false');
+    expect(screen.getByTestId('selected-label').textContent).toBe('English');
   });
 
   it('sets the selected audio track', () => {
     const selectAudioTrack = vi.fn();
+
     renderAudioTrackOptions({ selectAudioTrack });
 
     fireEvent.click(screen.getByRole('menuitemradio', { name: 'Spanish' }));

@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+
 import useIsHydrated from '@/utils/useIsHydrated';
 
 export interface CopyButtonProps {
@@ -13,10 +14,21 @@ export interface CopyButtonProps {
   timeout?: number;
 }
 
+/** Read the target's text without UI chrome such as a code frame's "Show more" control. */
+function getCopyText(target: Element): string {
+  // SAFETY: cloning an Element yields an Element of the same type.
+  const clone = target.cloneNode(true) as Element;
+
+  clone.querySelectorAll('[data-copy-ignore]').forEach((node) => node.remove());
+
+  return clone.textContent || '';
+}
+
 export default function CopyButton({ children, copied, copyFrom, className, style, timeout = 2000 }: CopyButtonProps) {
   const buttonRef = useRef<HTMLButtonElement>(null);
   const [isCopied, setIsCopied] = useState(false);
   const isHydrated = useIsHydrated();
+
   const disabled = !isHydrated;
 
   const handleCopy = async () => {
@@ -26,11 +38,13 @@ export default function CopyButton({ children, copied, copyFrom, className, styl
       if (buttonRef.current) {
         // Find the closest container
         const container = buttonRef.current.closest(copyFrom.container);
+
         if (container) {
           // Find the target within that container
           const target = container.querySelector(copyFrom.target);
+
           if (target) {
-            text = target?.textContent || '';
+            text = getCopyText(target);
           } else {
             console.warn(
               `CopyButton: No target found for selector "${copyFrom.target}" within container "${copyFrom.container}"`
@@ -42,6 +56,7 @@ export default function CopyButton({ children, copied, copyFrom, className, styl
       } else {
         console.warn('CopyButton: buttonRef is null');
       }
+
       if (text) {
         await navigator.clipboard.writeText(text.trim());
         setIsCopied(true);

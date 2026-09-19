@@ -1,11 +1,15 @@
 import { flush } from '@videojs/store';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { TooltipGroupCore } from '../../../../core/ui/tooltip/tooltip-group-core';
-import { createTestTooltip } from './tooltip-helpers';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test';
+
+import { TooltipGroupCore } from '../../../../core/ui/tooltip/group';
+import { createPopupGroup } from '../../popover/group';
+import { createTestPopover } from '../../popover/tests/helpers';
+import { createTestTooltip } from './helpers';
 
 describe('createTooltip', () => {
   it('starts closed', () => {
     const { tooltip } = createTestTooltip();
+
     expect(tooltip.input.current).toEqual({ active: false, status: 'idle' });
   });
 
@@ -167,6 +171,105 @@ describe('createTooltip', () => {
         vi.advanceTimersByTime(600);
 
         expect(onOpenChange).toHaveBeenCalledWith(true, { reason: 'hover' });
+      });
+
+      it('closes on pointer down', () => {
+        const { tooltip, onOpenChange } = createTestTooltip();
+
+        tooltip.open();
+        onOpenChange.mockClear();
+
+        tooltip.triggerProps.onPointerDown({
+          clientX: 0,
+          clientY: 0,
+          pointerId: 1,
+          pointerType: 'mouse',
+          buttons: 1,
+          preventDefault: vi.fn(),
+          stopPropagation: vi.fn(),
+        });
+
+        expect(onOpenChange).toHaveBeenCalledWith(false, { reason: 'imperative-action' });
+      });
+
+      it('cancels a pending hover open on pointer down', () => {
+        const { tooltip, onOpenChange } = createTestTooltip();
+        const event = {
+          clientX: 0,
+          clientY: 0,
+          pointerId: 1,
+          pointerType: 'mouse' as const,
+          buttons: 0,
+          preventDefault: vi.fn(),
+          stopPropagation: vi.fn(),
+        };
+
+        tooltip.triggerProps.onPointerEnter(event);
+        tooltip.triggerProps.onPointerDown(event);
+        vi.advanceTimersByTime(600);
+
+        expect(onOpenChange).not.toHaveBeenCalled();
+      });
+
+      it('does not open while its trigger owns an open popup', () => {
+        const group = createPopupGroup();
+        const owner = createTestPopover({ group: () => group });
+        const { tooltip, onOpenChange } = createTestTooltip({ popupGroup: () => group });
+        const trigger = document.createElement('button');
+
+        owner.popover.setTriggerElement(trigger);
+        tooltip.setTriggerElement(trigger);
+        owner.popover.open();
+
+        tooltip.triggerProps.onPointerEnter({
+          clientX: 0,
+          clientY: 0,
+          pointerId: 1,
+          pointerType: 'mouse',
+          buttons: 0,
+          preventDefault: vi.fn(),
+          stopPropagation: vi.fn(),
+        });
+        tooltip.triggerProps.onFocusIn({ relatedTarget: null, preventDefault: vi.fn(), stopPropagation: vi.fn() });
+        vi.advanceTimersByTime(600);
+
+        expect(onOpenChange).not.toHaveBeenCalled();
+      });
+
+      it('closes when its trigger opens another popup', () => {
+        const group = createPopupGroup();
+        const owner = createTestPopover({ group: () => group });
+        const { tooltip, onOpenChange } = createTestTooltip({ popupGroup: () => group });
+        const trigger = document.createElement('button');
+
+        owner.popover.setTriggerElement(trigger);
+        tooltip.setTriggerElement(trigger);
+        tooltip.open();
+        onOpenChange.mockClear();
+
+        owner.popover.open();
+
+        expect(onOpenChange).toHaveBeenCalledWith(false, { reason: 'imperative-action' });
+      });
+
+      it('stays open with its trigger popup when requested', () => {
+        const group = createPopupGroup();
+        const owner = createTestPopover({ group: () => group });
+        const { tooltip, onOpenChange } = createTestTooltip({
+          popupGroup: () => group,
+          sticky: () => true,
+        });
+        const trigger = document.createElement('button');
+
+        owner.popover.setTriggerElement(trigger);
+        tooltip.setTriggerElement(trigger);
+        tooltip.open();
+        onOpenChange.mockClear();
+
+        owner.popover.open();
+
+        expect(onOpenChange).not.toHaveBeenCalled();
+        expect(tooltip.input.current.active).toBe(true);
       });
 
       it('does not open via focus after pointer down (tap)', () => {

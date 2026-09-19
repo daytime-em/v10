@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vite-plus/test';
 
-import { namedNodeMapToObject, serializeAttributes } from '../attributes';
+import { namedNodeMapToObject, restoreAttributes, serializeAttributes, snapshotAttributes } from '../attributes';
 
 describe('serializeAttributes', () => {
   it('serializes a boolean (empty-string) attribute without a value', () => {
@@ -38,6 +38,7 @@ describe('serializeAttributes', () => {
 
   it('escapes all four special characters together', () => {
     const value = '&"<>';
+
     expect(serializeAttributes({ src: value })).toBe(' src="&amp;&quot;&lt;&gt;"');
   });
 
@@ -46,9 +47,26 @@ describe('serializeAttributes', () => {
   });
 });
 
+describe('attribute snapshots', () => {
+  it('restores present and absent attributes', () => {
+    const element = document.createElement('div');
+
+    element.setAttribute('aria-hidden', 'false');
+    const snapshot = snapshotAttributes(element, ['aria-hidden', 'inert']);
+
+    element.setAttribute('aria-hidden', 'true');
+    element.setAttribute('inert', '');
+    restoreAttributes(element, snapshot);
+
+    expect(element.getAttribute('aria-hidden')).toBe('false');
+    expect(element.hasAttribute('inert')).toBe(false);
+  });
+});
+
 describe('namedNodeMapToObject', () => {
   it('copies raw attribute values without escaping', () => {
     const el = document.createElement('div');
+
     el.setAttribute('src', '"raw"');
     el.setAttribute('muted', '');
 

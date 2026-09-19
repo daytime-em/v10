@@ -1,18 +1,6 @@
 [build]
-  command = "pnpm build:site"
+  command = "pnpm exec vp run --no-cache site#build"
   publish = "site/dist"
-  ignore = "pnpm turbo query affected --packages site --tasks build --exit-code"
-
-# turbo query affected defaults to comparing against the merge-base with main.
-# On the production branch (site/v10) and main itself, that merge-base is HEAD,
-# so turbo finds zero changes and skips the build. HEAD~1 compares against the
-# previous commit instead. We scope this to production and branch-deploy only —
-# PR previews keep the default merge-base behavior so multi-commit pushes work.
-[context.production.environment]
-  TURBO_SCM_BASE = "HEAD~1"
-
-[context.branch-deploy.environment]
-  TURBO_SCM_BASE = "HEAD~1"
 
 # PostHog reverse proxy (ad-blocker bypass)
 [[redirects]]
@@ -26,6 +14,15 @@
   from = "/ph/*"
   to = "https://us.i.posthog.com/:splat"
   host = "us.i.posthog.com"
+  status = 200
+  force = true
+
+# The Video.js 8 embed snippet links to this URL from millions of pages.
+# Serve the page on the exact legacy URL rather than bouncing through the
+# alias redirect below. Listed first because Netlify takes the first match.
+[[redirects]]
+  from = "https://videojs.com/html5-video-support"
+  to = "/html5-video-support"
   status = 200
   force = true
 
@@ -54,6 +51,1382 @@
   status = 301
   force = true
 
+
+# Docs pages that moved or were renamed on the redesign, listed before the section-wide rules below so a page that
+# changed slug as well as section lands on its new address in one hop. Each page has a .md twin.
+[[redirects]]
+  from = "/docs/framework/react/concepts/custom-element-lifecycle"
+  to = "/docs/framework/react/guides/build-your-own-component"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/concepts/custom-element-lifecycle.md"
+  to = "/docs/framework/react/guides/build-your-own-component.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/concepts/custom-element-lifecycle"
+  to = "/docs/framework/html/guides/build-your-own-component"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/concepts/custom-element-lifecycle.md"
+  to = "/docs/framework/html/guides/build-your-own-component.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/concepts/overview"
+  to = "/docs/framework/react/guides/architecture"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/concepts/overview.md"
+  to = "/docs/framework/react/guides/architecture.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/concepts/overview"
+  to = "/docs/framework/html/guides/architecture"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/concepts/overview.md"
+  to = "/docs/framework/html/guides/architecture.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/concepts/why-videojs"
+  to = "/docs/framework/react/guides/why-videojs"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/concepts/why-videojs.md"
+  to = "/docs/framework/react/guides/why-videojs.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/concepts/why-videojs"
+  to = "/docs/framework/html/guides/why-videojs"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/concepts/why-videojs.md"
+  to = "/docs/framework/html/guides/why-videojs.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/concepts/browser-support"
+  to = "/docs/framework/react/guides/browser-support"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/concepts/browser-support.md"
+  to = "/docs/framework/react/guides/browser-support.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/concepts/browser-support"
+  to = "/docs/framework/html/guides/browser-support"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/concepts/browser-support.md"
+  to = "/docs/framework/html/guides/browser-support.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/concepts/v10-roadmap"
+  to = "/docs/framework/react/guides/v10-roadmap"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/concepts/v10-roadmap.md"
+  to = "/docs/framework/react/guides/v10-roadmap.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/concepts/v10-roadmap"
+  to = "/docs/framework/html/guides/v10-roadmap"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/concepts/v10-roadmap.md"
+  to = "/docs/framework/html/guides/v10-roadmap.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/guides/use-videojs-with-vue"
+  to = "/docs/framework/html/guides/vue"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/guides/use-videojs-with-vue.md"
+  to = "/docs/framework/html/guides/vue.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/guides/use-videojs-with-svelte"
+  to = "/docs/framework/html/guides/svelte"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/guides/use-videojs-with-svelte.md"
+  to = "/docs/framework/html/guides/svelte.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/concepts/typescript"
+  to = "/docs/framework/react/guides/typescript"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/concepts/typescript.md"
+  to = "/docs/framework/react/guides/typescript.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/concepts/typescript"
+  to = "/docs/framework/html/guides/typescript"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/concepts/typescript.md"
+  to = "/docs/framework/html/guides/typescript.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/concepts/bundlers"
+  to = "/docs/framework/react/guides/bundlers"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/concepts/bundlers.md"
+  to = "/docs/framework/react/guides/bundlers.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/concepts/bundlers"
+  to = "/docs/framework/html/guides/bundlers"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/concepts/bundlers.md"
+  to = "/docs/framework/html/guides/bundlers.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/concepts/cdn"
+  to = "/docs/framework/html/guides/cdn"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/concepts/cdn.md"
+  to = "/docs/framework/html/guides/cdn.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/guides/self-host-the-player"
+  to = "/docs/framework/html/guides/self-hosting"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/guides/self-host-the-player.md"
+  to = "/docs/framework/html/guides/self-hosting.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/guides/configure-a-content-security-policy"
+  to = "/docs/framework/react/guides/content-security-policy"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/guides/configure-a-content-security-policy.md"
+  to = "/docs/framework/react/guides/content-security-policy.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/concepts/security"
+  to = "/docs/framework/react/guides/content-security-policy"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/concepts/security.md"
+  to = "/docs/framework/react/guides/content-security-policy.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/guides/configure-a-content-security-policy"
+  to = "/docs/framework/html/guides/content-security-policy"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/guides/configure-a-content-security-policy.md"
+  to = "/docs/framework/html/guides/content-security-policy.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/concepts/security"
+  to = "/docs/framework/html/guides/content-security-policy"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/concepts/security.md"
+  to = "/docs/framework/html/guides/content-security-policy.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/concepts/features"
+  to = "/docs/framework/react/guides/features"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/concepts/features.md"
+  to = "/docs/framework/react/guides/features.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/concepts/features"
+  to = "/docs/framework/html/guides/features"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/concepts/features.md"
+  to = "/docs/framework/html/guides/features.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/concepts/skins"
+  to = "/docs/framework/react/guides/skins"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/concepts/skins.md"
+  to = "/docs/framework/react/guides/skins.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/concepts/skins"
+  to = "/docs/framework/html/guides/skins"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/concepts/skins.md"
+  to = "/docs/framework/html/guides/skins.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/concepts/presets"
+  to = "/docs/framework/react/guides/presets"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/concepts/presets.md"
+  to = "/docs/framework/react/guides/presets.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/concepts/presets"
+  to = "/docs/framework/html/guides/presets"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/concepts/presets.md"
+  to = "/docs/framework/html/guides/presets.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/concepts/ui-components"
+  to = "/docs/framework/react/guides/ui-components"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/concepts/ui-components.md"
+  to = "/docs/framework/react/guides/ui-components.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/concepts/ui-components"
+  to = "/docs/framework/html/guides/ui-components"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/concepts/ui-components.md"
+  to = "/docs/framework/html/guides/ui-components.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/concepts/accessibility"
+  to = "/docs/framework/react/guides/accessibility"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/concepts/accessibility.md"
+  to = "/docs/framework/react/guides/accessibility.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/concepts/accessibility"
+  to = "/docs/framework/html/guides/accessibility"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/concepts/accessibility.md"
+  to = "/docs/framework/html/guides/accessibility.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/concepts/media-sources"
+  to = "/docs/framework/react/guides/media-sources"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/concepts/media-sources.md"
+  to = "/docs/framework/react/guides/media-sources.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/concepts/media-sources"
+  to = "/docs/framework/html/guides/media-sources"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/concepts/media-sources.md"
+  to = "/docs/framework/html/guides/media-sources.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/guides/show-and-hide-controls"
+  to = "/docs/framework/react/guides/controls"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/guides/show-and-hide-controls.md"
+  to = "/docs/framework/react/guides/controls.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/guides/show-and-hide-controls"
+  to = "/docs/framework/html/guides/controls"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/guides/show-and-hide-controls.md"
+  to = "/docs/framework/html/guides/controls.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/guides/add-a-poster-and-loading-placeholder"
+  to = "/docs/framework/react/guides/poster"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/guides/add-a-poster-and-loading-placeholder.md"
+  to = "/docs/framework/react/guides/poster.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/guides/add-a-poster-and-loading-placeholder"
+  to = "/docs/framework/html/guides/poster"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/guides/add-a-poster-and-loading-placeholder.md"
+  to = "/docs/framework/html/guides/poster.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/guides/show-captions-and-subtitles"
+  to = "/docs/framework/react/guides/captions"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/guides/show-captions-and-subtitles.md"
+  to = "/docs/framework/react/guides/captions.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/guides/show-captions-and-subtitles"
+  to = "/docs/framework/html/guides/captions"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/guides/show-captions-and-subtitles.md"
+  to = "/docs/framework/html/guides/captions.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/guides/add-keyboard-shortcuts-and-gestures"
+  to = "/docs/framework/react/guides/keyboard-shortcuts"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/guides/add-keyboard-shortcuts-and-gestures.md"
+  to = "/docs/framework/react/guides/keyboard-shortcuts.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/guides/add-keyboard-shortcuts-and-gestures"
+  to = "/docs/framework/html/guides/keyboard-shortcuts"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/guides/add-keyboard-shortcuts-and-gestures.md"
+  to = "/docs/framework/html/guides/keyboard-shortcuts.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/guides/play-live-streams"
+  to = "/docs/framework/react/guides/live-streams"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/guides/play-live-streams.md"
+  to = "/docs/framework/react/guides/live-streams.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/guides/play-live-streams"
+  to = "/docs/framework/html/guides/live-streams"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/guides/play-live-streams.md"
+  to = "/docs/framework/html/guides/live-streams.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/guides/add-quality-selector"
+  to = "/docs/framework/react/guides/quality"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/guides/add-quality-selector.md"
+  to = "/docs/framework/react/guides/quality.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/guides/add-quality-selector"
+  to = "/docs/framework/html/guides/quality"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/guides/add-quality-selector.md"
+  to = "/docs/framework/html/guides/quality.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/guides/go-fullscreen-and-lock-orientation"
+  to = "/docs/framework/react/guides/fullscreen"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/guides/go-fullscreen-and-lock-orientation.md"
+  to = "/docs/framework/react/guides/fullscreen.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/guides/go-fullscreen-and-lock-orientation"
+  to = "/docs/framework/html/guides/fullscreen"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/guides/go-fullscreen-and-lock-orientation.md"
+  to = "/docs/framework/html/guides/fullscreen.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/guides/use-picture-in-picture"
+  to = "/docs/framework/react/guides/picture-in-picture"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/guides/use-picture-in-picture.md"
+  to = "/docs/framework/react/guides/picture-in-picture.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/guides/use-picture-in-picture"
+  to = "/docs/framework/html/guides/picture-in-picture"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/guides/use-picture-in-picture.md"
+  to = "/docs/framework/html/guides/picture-in-picture.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/guides/show-timeline-thumbnail-previews"
+  to = "/docs/framework/react/guides/thumbnails"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/guides/show-timeline-thumbnail-previews.md"
+  to = "/docs/framework/react/guides/thumbnails.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/guides/show-timeline-thumbnail-previews"
+  to = "/docs/framework/html/guides/thumbnails"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/guides/show-timeline-thumbnail-previews.md"
+  to = "/docs/framework/html/guides/thumbnails.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/guides/cast-to-airplay-and-chromecast"
+  to = "/docs/framework/react/guides/casting"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/guides/cast-to-airplay-and-chromecast.md"
+  to = "/docs/framework/react/guides/casting.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/guides/cast-to-airplay-and-chromecast"
+  to = "/docs/framework/html/guides/casting"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/guides/cast-to-airplay-and-chromecast.md"
+  to = "/docs/framework/html/guides/casting.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/guides/handle-playback-errors"
+  to = "/docs/framework/react/guides/playback-errors"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/guides/handle-playback-errors.md"
+  to = "/docs/framework/react/guides/playback-errors.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/guides/handle-playback-errors"
+  to = "/docs/framework/html/guides/playback-errors"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/guides/handle-playback-errors.md"
+  to = "/docs/framework/html/guides/playback-errors.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/guides/remember-user-preferences"
+  to = "/docs/framework/react/guides/user-preferences"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/guides/remember-user-preferences.md"
+  to = "/docs/framework/react/guides/user-preferences.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/guides/preferences"
+  to = "/docs/framework/react/guides/user-preferences"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/guides/preferences.md"
+  to = "/docs/framework/react/guides/user-preferences.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/guides/remember-user-preferences"
+  to = "/docs/framework/html/guides/user-preferences"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/guides/remember-user-preferences.md"
+  to = "/docs/framework/html/guides/user-preferences.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/guides/preferences"
+  to = "/docs/framework/html/guides/user-preferences"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/guides/preferences.md"
+  to = "/docs/framework/html/guides/user-preferences.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/guides/add-a-background-video"
+  to = "/docs/framework/react/guides/background-video"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/guides/add-a-background-video.md"
+  to = "/docs/framework/react/guides/background-video.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/guides/add-a-background-video"
+  to = "/docs/framework/html/guides/background-video"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/guides/add-a-background-video.md"
+  to = "/docs/framework/html/guides/background-video.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/guides/internationalize-the-player"
+  to = "/docs/framework/react/guides/internationalization"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/guides/internationalize-the-player.md"
+  to = "/docs/framework/react/guides/internationalization.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/guides/internationalize-the-player"
+  to = "/docs/framework/html/guides/internationalization"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/guides/internationalize-the-player.md"
+  to = "/docs/framework/html/guides/internationalization.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/guides/monitor-playback-with-mux-data"
+  to = "/docs/framework/react/guides/mux-data"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/guides/monitor-playback-with-mux-data.md"
+  to = "/docs/framework/react/guides/mux-data.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/concepts/mux-data"
+  to = "/docs/framework/react/guides/mux-data"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/react/concepts/mux-data.md"
+  to = "/docs/framework/react/guides/mux-data.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/guides/monitor-playback-with-mux-data"
+  to = "/docs/framework/html/guides/mux-data"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/guides/monitor-playback-with-mux-data.md"
+  to = "/docs/framework/html/guides/mux-data.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/concepts/mux-data"
+  to = "/docs/framework/html/guides/mux-data"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/html/concepts/mux-data.md"
+  to = "/docs/framework/html/guides/mux-data.md"
+  status = 301
+
+# Docs sections were renamed: how-to → guides; reference pages now live under reference/components and reference/api.
+# Keep every old URL (and its .md twin) alive.
+# The authoring guides moved to writing-style/ before the wildcards below existed; name them so they do not fall
+# through to guides/ or components/. They are dev-only pages, so production answers 404 at the right address.
+[[redirects]]
+  from = "/docs/framework/:framework/how-to/write-guides"
+  to = "/docs/framework/:framework/writing-style/write-guides"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/how-to/write-guides.md"
+  to = "/docs/framework/:framework/writing-style/write-guides.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/reference/write-references"
+  to = "/docs/framework/:framework/writing-style/write-references"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/reference/write-references.md"
+  to = "/docs/framework/:framework/writing-style/write-references.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/how-to/*"
+  to = "/docs/framework/:framework/guides/:splat"
+  status = 301
+
+# Reference pages retired on purpose for now, even though their exports still exist; their old URLs stop at the 404
+# below rather than redirecting: use-media, use-media-attach, use-media-extension, use-media-instance, use-attach-media,
+# use-player-context, use-dialog-context, use-error-dialog-context, use-menu-context, use-optional-menu-context,
+# use-popover-context, use-tooltip-context, player-context, i-18-n-context, html-i-18-n-context, media-attach-mixin.
+# Missing pages under the new prefixes must 404 here; otherwise the hop below would bounce them between
+# reference/ and components/ forever. Existing files are served before either rule applies.
+[[redirects]]
+  from = "/docs/framework/:framework/reference/components/*"
+  to = "/404.html"
+  status = 404
+
+[[redirects]]
+  from = "/docs/framework/:framework/reference/api/*"
+  to = "/404.html"
+  status = 404
+
+# Pre-rename reference URLs hop through components/, whose rules below send each page to its new home.
+[[redirects]]
+  from = "/docs/framework/:framework/reference/*"
+  to = "/docs/framework/:framework/components/:splat"
+  status = 301
+
+# Non-component API pages moved from components/ to api/.
+[[redirects]]
+  from = "/docs/framework/:framework/components/aria-key-shortcuts-controller"
+  to = "/docs/framework/:framework/reference/api/aria-key-shortcuts-controller"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/aria-key-shortcuts-controller.md"
+  to = "/docs/framework/:framework/reference/api/aria-key-shortcuts-controller.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/create-i18n"
+  to = "/docs/framework/:framework/reference/api/create-i18n"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/create-i18n.md"
+  to = "/docs/framework/:framework/reference/api/create-i18n.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/create-player"
+  to = "/docs/framework/:framework/reference/api/create-player"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/create-player.md"
+  to = "/docs/framework/:framework/reference/api/create-player.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/create-selector"
+  to = "/docs/framework/:framework/reference/api/create-selector"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/create-selector.md"
+  to = "/docs/framework/:framework/reference/api/create-selector.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/create-translator"
+  to = "/docs/framework/:framework/reference/api/create-translator"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/create-translator.md"
+  to = "/docs/framework/:framework/reference/api/create-translator.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/feature-audio-track"
+  to = "/docs/framework/:framework/reference/api/feature-audio-track"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/feature-audio-track.md"
+  to = "/docs/framework/:framework/reference/api/feature-audio-track.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/feature-buffer"
+  to = "/docs/framework/:framework/reference/api/feature-buffer"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/feature-buffer.md"
+  to = "/docs/framework/:framework/reference/api/feature-buffer.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/feature-controls"
+  to = "/docs/framework/:framework/reference/api/feature-controls"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/feature-controls.md"
+  to = "/docs/framework/:framework/reference/api/feature-controls.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/feature-error"
+  to = "/docs/framework/:framework/reference/api/feature-error"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/feature-error.md"
+  to = "/docs/framework/:framework/reference/api/feature-error.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/feature-fullscreen"
+  to = "/docs/framework/:framework/reference/api/feature-fullscreen"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/feature-fullscreen.md"
+  to = "/docs/framework/:framework/reference/api/feature-fullscreen.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/feature-live"
+  to = "/docs/framework/:framework/reference/api/feature-live"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/feature-live.md"
+  to = "/docs/framework/:framework/reference/api/feature-live.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/feature-metadata"
+  to = "/docs/framework/:framework/reference/api/feature-metadata"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/feature-metadata.md"
+  to = "/docs/framework/:framework/reference/api/feature-metadata.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/feature-orientation-lock"
+  to = "/docs/framework/:framework/reference/api/feature-orientation-lock"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/feature-orientation-lock.md"
+  to = "/docs/framework/:framework/reference/api/feature-orientation-lock.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/feature-pip"
+  to = "/docs/framework/:framework/reference/api/feature-pip"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/feature-pip.md"
+  to = "/docs/framework/:framework/reference/api/feature-pip.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/feature-playback"
+  to = "/docs/framework/:framework/reference/api/feature-playback"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/feature-playback.md"
+  to = "/docs/framework/:framework/reference/api/feature-playback.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/feature-playback-rate"
+  to = "/docs/framework/:framework/reference/api/feature-playback-rate"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/feature-playback-rate.md"
+  to = "/docs/framework/:framework/reference/api/feature-playback-rate.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/feature-quality"
+  to = "/docs/framework/:framework/reference/api/feature-quality"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/feature-quality.md"
+  to = "/docs/framework/:framework/reference/api/feature-quality.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/feature-remote-playback"
+  to = "/docs/framework/:framework/reference/api/feature-remote-playback"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/feature-remote-playback.md"
+  to = "/docs/framework/:framework/reference/api/feature-remote-playback.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/feature-source"
+  to = "/docs/framework/:framework/reference/api/feature-source"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/feature-source.md"
+  to = "/docs/framework/:framework/reference/api/feature-source.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/feature-stream-type"
+  to = "/docs/framework/:framework/reference/api/feature-stream-type"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/feature-stream-type.md"
+  to = "/docs/framework/:framework/reference/api/feature-stream-type.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/feature-text-tracks"
+  to = "/docs/framework/:framework/reference/api/feature-text-tracks"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/feature-text-tracks.md"
+  to = "/docs/framework/:framework/reference/api/feature-text-tracks.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/feature-time"
+  to = "/docs/framework/:framework/reference/api/feature-time"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/feature-time.md"
+  to = "/docs/framework/:framework/reference/api/feature-time.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/feature-volume"
+  to = "/docs/framework/:framework/reference/api/feature-volume"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/feature-volume.md"
+  to = "/docs/framework/:framework/reference/api/feature-volume.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/get-i18n-translations"
+  to = "/docs/framework/:framework/reference/api/get-i18n-translations"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/get-i18n-translations.md"
+  to = "/docs/framework/:framework/reference/api/get-i18n-translations.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/has-registered-locale"
+  to = "/docs/framework/:framework/reference/api/has-registered-locale"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/has-registered-locale.md"
+  to = "/docs/framework/:framework/reference/api/has-registered-locale.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/html-create-player"
+  to = "/docs/framework/:framework/reference/api/html-create-player"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/html-create-player.md"
+  to = "/docs/framework/:framework/reference/api/html-create-player.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/i-18-n-controller"
+  to = "/docs/framework/:framework/reference/api/i-18-n-controller"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/i-18-n-controller.md"
+  to = "/docs/framework/:framework/reference/api/i-18-n-controller.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/i18n-provider"
+  to = "/docs/framework/:framework/reference/api/i18n-provider"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/i18n-provider.md"
+  to = "/docs/framework/:framework/reference/api/i18n-provider.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/media-i18n"
+  to = "/docs/framework/:framework/reference/api/media-i18n"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/media-i18n.md"
+  to = "/docs/framework/:framework/reference/api/media-i18n.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/media-text"
+  to = "/docs/framework/:framework/reference/api/media-text"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/media-text.md"
+  to = "/docs/framework/:framework/reference/api/media-text.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/merge-props"
+  to = "/docs/framework/:framework/reference/api/merge-props"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/merge-props.md"
+  to = "/docs/framework/:framework/reference/api/merge-props.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/on-i18n-registry-change"
+  to = "/docs/framework/:framework/reference/api/on-i18n-registry-change"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/on-i18n-registry-change.md"
+  to = "/docs/framework/:framework/reference/api/on-i18n-registry-change.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/player-controller"
+  to = "/docs/framework/:framework/reference/api/player-controller"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/player-controller.md"
+  to = "/docs/framework/:framework/reference/api/player-controller.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/register-i18n"
+  to = "/docs/framework/:framework/reference/api/register-i18n"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/register-i18n.md"
+  to = "/docs/framework/:framework/reference/api/register-i18n.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/render-element"
+  to = "/docs/framework/:framework/reference/api/render-element"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/render-element.md"
+  to = "/docs/framework/:framework/reference/api/render-element.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/snapshot-controller"
+  to = "/docs/framework/:framework/reference/api/snapshot-controller"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/snapshot-controller.md"
+  to = "/docs/framework/:framework/reference/api/snapshot-controller.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/store-controller"
+  to = "/docs/framework/:framework/reference/api/store-controller"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/store-controller.md"
+  to = "/docs/framework/:framework/reference/api/store-controller.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/subscription-controller"
+  to = "/docs/framework/:framework/reference/api/subscription-controller"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/subscription-controller.md"
+  to = "/docs/framework/:framework/reference/api/subscription-controller.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/translation-phrases"
+  to = "/docs/framework/:framework/reference/api/translation-phrases"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/translation-phrases.md"
+  to = "/docs/framework/:framework/reference/api/translation-phrases.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/use-audio-track-options"
+  to = "/docs/framework/:framework/reference/api/use-audio-track-options"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/use-audio-track-options.md"
+  to = "/docs/framework/:framework/reference/api/use-audio-track-options.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/use-button"
+  to = "/docs/framework/:framework/reference/api/use-button"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/use-button.md"
+  to = "/docs/framework/:framework/reference/api/use-button.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/use-captions-options"
+  to = "/docs/framework/:framework/reference/api/use-captions-options"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/use-captions-options.md"
+  to = "/docs/framework/:framework/reference/api/use-captions-options.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/use-composed-refs"
+  to = "/docs/framework/:framework/reference/api/use-composed-refs"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/use-composed-refs.md"
+  to = "/docs/framework/:framework/reference/api/use-composed-refs.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/use-container"
+  to = "/docs/framework/:framework/reference/api/use-container"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/use-container.md"
+  to = "/docs/framework/:framework/reference/api/use-container.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/use-container-attach"
+  to = "/docs/framework/:framework/reference/api/use-container-attach"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/use-container-attach.md"
+  to = "/docs/framework/:framework/reference/api/use-container-attach.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/use-destroy"
+  to = "/docs/framework/:framework/reference/api/use-destroy"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/use-destroy.md"
+  to = "/docs/framework/:framework/reference/api/use-destroy.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/use-double-tap-gesture"
+  to = "/docs/framework/:framework/reference/api/use-double-tap-gesture"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/use-double-tap-gesture.md"
+  to = "/docs/framework/:framework/reference/api/use-double-tap-gesture.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/use-hotkey"
+  to = "/docs/framework/:framework/reference/api/use-hotkey"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/use-hotkey.md"
+  to = "/docs/framework/:framework/reference/api/use-hotkey.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/use-hotkey-shortcut"
+  to = "/docs/framework/:framework/reference/api/use-hotkey-shortcut"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/use-hotkey-shortcut.md"
+  to = "/docs/framework/:framework/reference/api/use-hotkey-shortcut.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/use-latest-ref"
+  to = "/docs/framework/:framework/reference/api/use-latest-ref"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/use-latest-ref.md"
+  to = "/docs/framework/:framework/reference/api/use-latest-ref.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/use-locale"
+  to = "/docs/framework/:framework/reference/api/use-locale"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/use-locale.md"
+  to = "/docs/framework/:framework/reference/api/use-locale.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/use-optional-container"
+  to = "/docs/framework/:framework/reference/api/use-optional-container"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/use-optional-container.md"
+  to = "/docs/framework/:framework/reference/api/use-optional-container.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/use-optional-player"
+  to = "/docs/framework/:framework/reference/api/use-optional-player"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/use-optional-player.md"
+  to = "/docs/framework/:framework/reference/api/use-optional-player.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/use-playback-rate-options"
+  to = "/docs/framework/:framework/reference/api/use-playback-rate-options"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/use-playback-rate-options.md"
+  to = "/docs/framework/:framework/reference/api/use-playback-rate-options.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/use-player"
+  to = "/docs/framework/:framework/reference/api/use-player"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/use-player.md"
+  to = "/docs/framework/:framework/reference/api/use-player.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/use-quality-options"
+  to = "/docs/framework/:framework/reference/api/use-quality-options"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/use-quality-options.md"
+  to = "/docs/framework/:framework/reference/api/use-quality-options.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/use-selector"
+  to = "/docs/framework/:framework/reference/api/use-selector"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/use-selector.md"
+  to = "/docs/framework/:framework/reference/api/use-selector.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/use-slider"
+  to = "/docs/framework/:framework/reference/api/use-slider"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/use-slider.md"
+  to = "/docs/framework/:framework/reference/api/use-slider.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/use-snapshot"
+  to = "/docs/framework/:framework/reference/api/use-snapshot"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/use-snapshot.md"
+  to = "/docs/framework/:framework/reference/api/use-snapshot.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/use-store"
+  to = "/docs/framework/:framework/reference/api/use-store"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/use-store.md"
+  to = "/docs/framework/:framework/reference/api/use-store.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/use-tap-gesture"
+  to = "/docs/framework/:framework/reference/api/use-tap-gesture"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/use-tap-gesture.md"
+  to = "/docs/framework/:framework/reference/api/use-tap-gesture.md"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/use-translator"
+  to = "/docs/framework/:framework/reference/api/use-translator"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/use-translator.md"
+  to = "/docs/framework/:framework/reference/api/use-translator.md"
+  status = 301
+
+# SimpleHls* was renamed to Hls*, taking the reference slugs with it
+[[redirects]]
+  from = "/docs/framework/:framework/components/simple-hls-video"
+  to = "/docs/framework/:framework/reference/components/hls-video"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/components/simple-hls-audio-only"
+  to = "/docs/framework/:framework/reference/components/hls-audio"
+  status = 301
+
+# Everything else under the old components/ and api/ prefixes moved beneath reference/.
+[[redirects]]
+  from = "/docs/framework/:framework/components/*"
+  to = "/docs/framework/:framework/reference/components/:splat"
+  status = 301
+
+[[redirects]]
+  from = "/docs/framework/:framework/api/*"
+  to = "/docs/framework/:framework/reference/api/:splat"
+  status = 301
 
 # Redirect old theme demo pages to home
 [[redirects]]
@@ -467,12 +1840,6 @@
 [[redirects]]
   from = "/tags/*"
   to = "/blog"
-  status = 307
-
-# Redirect old support URL to new page
-[[redirects]]
-  from = "/html5-video-support"
-  to = "/support"
   status = 307
 
 # Misc v8 stragglers

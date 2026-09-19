@@ -1,8 +1,11 @@
-import { createStore } from '@videojs/store';
-import { describe, expect, it } from 'vitest';
-import type { PlayerTarget } from '../../../media/types';
+import { getTimeRangeEnd, hasTimeRange } from '@videojs/media';
+import { combine, createStore } from '@videojs/store';
+import { describe, expect, it } from 'vite-plus/test';
+
+import type { PlayerTarget } from '../../../player';
 import { createMockVideo, createTimeRanges } from '../../../tests/test-helpers';
 import { bufferFeature } from '../buffer';
+import { timeFeature } from '../time';
 
 describe('bufferFeature', () => {
   describe('attach', () => {
@@ -13,6 +16,7 @@ describe('bufferFeature', () => {
       });
 
       const store = createStore<PlayerTarget>()(bufferFeature);
+
       store.attach({ media: video, container: null });
 
       expect(store.state.buffered).toEqual([[0, 60]]);
@@ -29,6 +33,7 @@ describe('bufferFeature', () => {
       });
 
       const store = createStore<PlayerTarget>()(bufferFeature);
+
       store.attach({ media: video, container: null });
 
       expect(store.state.buffered).toEqual([
@@ -44,6 +49,7 @@ describe('bufferFeature', () => {
       });
 
       const store = createStore<PlayerTarget>()(bufferFeature);
+
       store.attach({ media: video, container: null });
 
       // Update the mock video's buffered range
@@ -58,6 +64,30 @@ describe('bufferFeature', () => {
       expect(store.state.buffered).toEqual([[0, 75]]);
     });
 
+    it.each(['loadedmetadata', 'durationchange'])('syncs an initial seekable range on %s without progress', (event) => {
+      const video = createMockVideo({
+        duration: 0,
+        buffered: createTimeRanges([]),
+        seekable: createTimeRanges([]),
+      });
+      const store = createStore<PlayerTarget>()(combine(timeFeature, bufferFeature));
+
+      store.attach({ media: video, container: null });
+
+      expect(hasTimeRange(store.state)).toBe(false);
+
+      Object.defineProperty(video, 'seekable', {
+        value: createTimeRanges([[30, 120]]),
+        configurable: true,
+      });
+      video.dispatchEvent(new Event(event));
+
+      expect(store.state.duration).toBe(0);
+      expect(store.state.seekable).toEqual([[30, 120]]);
+      expect(hasTimeRange(store.state)).toBe(true);
+      expect(getTimeRangeEnd(store.state)).toBe(120);
+    });
+
     it('updates on emptied event', () => {
       const video = createMockVideo({
         buffered: createTimeRanges([[0, 50]]),
@@ -65,6 +95,7 @@ describe('bufferFeature', () => {
       });
 
       const store = createStore<PlayerTarget>()(bufferFeature);
+
       store.attach({ media: video, container: null });
 
       // Update the mock video to have no buffered content

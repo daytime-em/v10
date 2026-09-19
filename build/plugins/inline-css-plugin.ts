@@ -1,6 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
+
 import { transform } from 'lightningcss';
+
+import { cssTargets } from '../css-targets.ts';
 import { resolveImports } from './resolve-css-imports.ts';
 import type { BuildPlugin } from './types.ts';
 
@@ -9,18 +12,16 @@ const INLINE_PREFIX = 'inline-css:';
 const INLINE_SUFFIX = '?inline';
 
 interface InlineCssPluginOptions {
-  skinsDir: string;
   rootDir?: string;
   minify?: boolean;
 }
 
 /**
- * Rolldown/tsdown plugin that inlines `.css?inline` imports as JavaScript
- * modules exporting the resolved CSS string. Mirrors the Vite `?inline`
- * convention so the same source works in both Vite dev and tsdown builds.
+ * Rolldown/Vite+ pack plugin that inlines `.css?inline` imports as JavaScript modules exporting the resolved CSS
+ * string. Mirrors the Vite `?inline` convention so the same source works in both Vite dev and Vite+ package builds.
  */
 export function inlineCssPlugin(options: InlineCssPluginOptions): BuildPlugin {
-  const { skinsDir, rootDir = process.cwd(), minify = true } = options;
+  const { rootDir = process.cwd(), minify = true } = options;
 
   return {
     name: 'inline-css',
@@ -43,13 +44,14 @@ export function inlineCssPlugin(options: InlineCssPluginOptions): BuildPlugin {
       const rel = id.slice(INLINE_PREFIX.length).replace(/\.js$/, '.css');
       const file = resolve(rootDir, rel);
       const raw = readFileSync(file, 'utf-8');
-      let resolved = resolveImports(raw, dirname(file), skinsDir);
+      let resolved = resolveImports(raw, dirname(file));
 
       if (minify) {
         const { code } = transform({
           filename: file,
           code: Buffer.from(resolved),
           minify: true,
+          targets: cssTargets,
         });
 
         resolved = code.toString();

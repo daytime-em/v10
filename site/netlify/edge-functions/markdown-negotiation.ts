@@ -11,6 +11,7 @@ export default async (request: Request, _context: Context) => {
   const body = await mdResponse.text();
 
   const headers = new Headers();
+
   headers.set('content-type', 'text/markdown; charset=utf-8');
   headers.set('cache-control', 'public, s-maxage=31536000');
   headers.set('vary', 'Accept');
@@ -22,7 +23,7 @@ export default async (request: Request, _context: Context) => {
 export const config: Config = {
   // https://docs.netlify.com/build/edge-functions/optional-configuration/#caching
   cache: 'manual',
-  path: ['/blog/*', '/docs/*'],
+  path: ['/blog/*', '/docs/*', '/errors/*', '/html5-video-support', '/about-this-player'],
   header: {
     accept: 'text/markdown',
   },

@@ -1,13 +1,7 @@
 import { createTransitionActor } from '../../../core/actors/create-transition-actor';
 import type { Cue } from '../../../media/types';
-import type {
-  AddCuesMessage,
-  ClearMessage,
-  CueSegmentMeta,
-  TextTracksActor,
-  TextTracksActorContext,
-  TextTracksActorMessage,
-} from '../text-tracks';
+import type { AddCuesMessage, CueSegmentMeta } from '../../primitives/text-track-messages';
+import type { ClearMessage, TextTracksActor, TextTracksActorContext, TextTracksActorMessage } from '../text-tracks';
 
 // Re-export the host-agnostic types so existing dom-side consumers can keep
 // importing from this module.
@@ -58,10 +52,10 @@ export function createTextTracksActor(mediaElement: HTMLMediaElement): TextTrack
     const existingSegments = context.segments[trackId] ?? [];
     const prunedCues = cues.filter((cue) => !isDuplicateCue(cue, existingCues));
     const segmentAlreadyLoaded = existingSegments.some((s) => s.id === segmentId);
-
     if (prunedCues.length === 0 && segmentAlreadyLoaded) return context;
 
     for (const cue of prunedCues) textTrack.addCue(cue);
+
     return {
       ...context,
       loaded: {

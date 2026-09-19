@@ -22,8 +22,12 @@ dist/
 lib/
 out/
 packages/*/types/
+packages/adapters/*/types/
+packages/extensions/*/types/
+apps/*/types/
 *.tsbuildinfo
-.turbo/
+.vite/
+.vite-hooks/_/
 coverage/
 *.lcov
 .nyc_output/
@@ -36,11 +40,36 @@ site/src/content/generated-util-reference/
 site/src/content/generated-feature-reference/
 site/src/content/generated-media-reference/
 site/src/content/generated-preset-reference/
-site/src/content/ejected-skins.json
 site/src/content/cdn-media.json
+site/src/content/ejected-skins.json
 packages/cli/docs/
 packages/html/docs/
 packages/react/docs/
+
+# VJSC
+packages/*/.vjsc/
+packages/adapters/*/.vjsc/
+packages/extensions/*/.vjsc/
+packages/core/src/core/ui/schema.generated.ts
+packages/html/vjsc/entries.generated.ts
+packages/icons/vjsc/schema.generated.ts
+packages/react/vjsc/entries.generated.ts
+packages/skins/vjsc/registry/
+# Framework Skin sources are generated from the canonical VJSC component graph.
+packages/html/src/presets/background/skin.ts
+packages/html/src/define/background/skin.css
+packages/html/src/internal/skins/
+packages/react/src/internal/skins/
+packages/react/src/presets/*/skin.tsx
+packages/react/src/presets/*/skin.css
+packages/react/src/presets/*/minimal-skin.tsx
+packages/react/src/presets/*/minimal-skin.css
+
+# -------------------------
+# Merge & Patch Backups
+# -------------------------
+*.orig
+*.rej
 
 # -------------------------
 # Environment
@@ -149,15 +178,18 @@ bun.lockb
 # -------------------------
 .playwright-mcp/
 
+# Personal mise overrides (mise.toml itself is checked in)
+mise.local.toml
+mise.*.local.toml
+
 # -------------------------
 # AI Agent Config (Generated)
 # -------------------------
-.claude/settings.local.json
-.claude/worktrees/
-.opencode
-AGENTS.md
-.agents
-agents
+/.claude/settings.local.json
+/.claude/worktrees/
+/.claude/skills
+/.claude/plans
+/.opencode
 
 # Playwright
 test-results/

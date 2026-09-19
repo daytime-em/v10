@@ -3,6 +3,12 @@ import { SerialRunner, Task } from '../../../core/tasks/task';
 import { type AppendData, appendSegment } from '../../../media/dom/mse/append-segment';
 import { flushBuffer } from '../../../media/dom/mse/buffer-flusher';
 import { SEGMENT_TIME_EPSILON, type Segment, type Track } from '../../../media/types';
+import type {
+  AppendInitMessage,
+  AppendSegmentMessage,
+  IndividualSourceBufferMessage,
+  RemoveMessage,
+} from '../../primitives/source-buffer-messages';
 
 // =============================================================================
 // Types
@@ -13,29 +19,8 @@ export interface BufferedRange {
   end: number;
 }
 
-export type AppendSegmentMeta = Pick<Segment, 'id' | 'startTime' | 'duration'> & {
-  trackId: Track['id'];
-  /** Declared track bandwidth in bps (from playlist BANDWIDTH attribute). */
-  trackBandwidth?: number;
-};
-
 export type { AppendData };
 
-export type AppendInitMessage = {
-  type: 'append-init';
-  data: AppendData;
-  /**
-   * `language` is captured alongside `trackId` so downstream loaders can
-   * compare the buffered track's language to the newly-selected track's
-   * language and decide whether ahead-buffer flush is warranted on track
-   * switch (see `segment-loader`'s `planTasks`). Undefined for video and
-   * for audio without explicit `LANGUAGE` attribute.
-   */
-  meta: { trackId: Track['id']; language?: string };
-};
-export type AppendSegmentMessage = { type: 'append-segment'; data: AppendData; meta: AppendSegmentMeta };
-export type RemoveMessage = { type: 'remove'; start: number; end: number };
-export type IndividualSourceBufferMessage = AppendInitMessage | AppendSegmentMessage | RemoveMessage;
 export type BatchMessage = { type: 'batch'; messages: IndividualSourceBufferMessage[] };
 export type CancelMessage = { type: 'cancel' };
 
@@ -49,10 +34,9 @@ export type SourceBufferActorState = 'idle' | 'updating' | 'destroyed';
 export interface SourceBufferActorContext {
   initTrackId?: string | undefined;
   /**
-   * Language of the most recently appended init segment's track (when
-   * present on the playlist). Used by the segment-loader's `planTasks`
-   * to detect cross-language switches and schedule ahead-buffer flush.
-   * Undefined for video and for language-less audio.
+   * Language of the most recently appended init segment's track (when present on the playlist). Used by the
+   * segment-loader's `planTasks` to detect cross-language switches and schedule ahead-buffer flush. Undefined for video
+   * and for language-less audio.
    */
   initTrackLanguage?: string | undefined;
   segments: Array<
@@ -60,9 +44,8 @@ export interface SourceBufferActorContext {
       trackId: Track['id'];
       trackBandwidth?: number;
       /**
-       * True while a streaming append is in progress for this segment.
-       * The segment's data is partially present in the SourceBuffer.
-       * Downstream code must not treat a partial segment as fully buffered.
+       * True while a streaming append is in progress for this segment. The segment's data is partially present in the
+       * SourceBuffer. Downstream code must not treat a partial segment as fully buffered.
        */
       partial?: boolean;
     }
@@ -79,9 +62,11 @@ export type SourceBufferActor = MessageActor<SourceBufferActorState, SourceBuffe
 
 function snapshotBuffered(buffered: TimeRanges): BufferedRange[] {
   const ranges: BufferedRange[] = [];
+
   for (let i = 0; i < buffered.length; i++) {
     ranges.push({ start: buffered.start(i), end: buffered.end(i) });
   }
+
   return ranges;
 }
 
@@ -105,7 +90,9 @@ function appendInitTask(
 ): Task<SourceBufferActorContext> {
   return new Task(async (taskSignal) => {
     const ctx = getContext();
+
     if (taskSignal.aborted) return ctx;
+
     await appendSegment(sourceBuffer, message.data);
     // No abort check here: the physical SourceBuffer has been modified, so
     // the model must be updated to match regardless of signal state.
@@ -119,6 +106,7 @@ function appendSegmentTask(
 ): Task<SourceBufferActorContext> {
   return new Task(async (taskSignal) => {
     const ctx = getContext();
+
     if (taskSignal.aborted) return ctx;
 
     const { meta } = message;
@@ -127,6 +115,12 @@ function appendSegmentTask(
     // across playlists. `SEGMENT_TIME_EPSILON` guards against floating-point
     // drift in parsed timestamps (shared with the segment-loader quality
     // filter — single source of truth).
+    //
+    // Misaligned renditions (e.g. 30fps vs 60fps rungs) break the same-slot
+    // assumption: the switched-to segment's differing startTime is kept as a
+    // separate overlapping entry rather than truncating the older one to the
+    // portion MSE didn't overwrite. Cosmetic today (see #1865 for the
+    // most-recent-append-wins model); coverage/flush stay correct.
     const filtered = ctx.segments.filter((s) => Math.abs(s.startTime - meta.startTime) >= SEGMENT_TIME_EPSILON);
 
     // For streaming data: emit partial state before the first chunk so
@@ -149,6 +143,13 @@ function appendSegmentTask(
         ],
         bufferedRanges: ctx.bufferedRanges,
       });
+    }
+
+    // Relocation: set the offset before the coded frames are appended. The
+    // SerialRunner guarantees the buffer is idle here, so the assignment is safe.
+    // Guarded so re-stamping the (constant) offset on later appends is a no-op.
+    if (meta.timestampOffset != null && sourceBuffer.timestampOffset !== meta.timestampOffset) {
+      sourceBuffer.timestampOffset = meta.timestampOffset;
     }
 
     await appendSegment(sourceBuffer, message.data, taskSignal);
@@ -177,7 +178,9 @@ function removeTask(
 ): Task<SourceBufferActorContext> {
   return new Task(async (taskSignal) => {
     const ctx = getContext();
+
     if (taskSignal.aborted) return ctx;
+
     await flushBuffer(sourceBuffer, message.start, message.end);
     // No abort check here: the physical SourceBuffer has been modified, so
     // the model must be updated to match regardless of signal state.
@@ -189,8 +192,10 @@ function removeTask(
     const bufferedRanges = snapshotBuffered(sourceBuffer.buffered);
     const filtered = ctx.segments.filter((s) => {
       const midpoint = s.startTime + s.duration / 2;
+
       return bufferedRanges.some((r) => midpoint >= r.start && midpoint < r.end);
     });
+
     return { ...ctx, segments: filtered, bufferedRanges };
   });
 }
@@ -213,6 +218,7 @@ function messageToTask(
   options: MessageTaskOptions
 ): Task<SourceBufferActorContext> {
   const factory = messageTaskFactories[message.type] as MessageTaskFactory<typeof message>;
+
   return factory(message, options);
 }
 
@@ -237,6 +243,7 @@ export function createSourceBufferActor(
   const onMessage = (msg: IndividualSourceBufferMessage, { transition, setContext, getContext, runner }: Ctx): void => {
     transition('updating');
     const task = messageToTask(msg, { getContext, sourceBuffer, setContext });
+
     runner.schedule(task).then(setContext, handleError);
   };
 
@@ -257,6 +264,7 @@ export function createSourceBufferActor(
             transition('updating');
             messages.forEach((msg) => {
               const task = messageToTask(msg, { getContext, sourceBuffer, setContext });
+
               runner.schedule(task).then(setContext, handleError);
             });
           },

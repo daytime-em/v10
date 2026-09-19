@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vite-plus/test';
+
 import type { ContextSignals, StateSignals } from '../../../../core/composition/create-composition';
 import { signal } from '../../../../core/signals/primitives';
 import type { MaybeResolvedPresentation, Presentation, Segment, VideoTrack } from '../../../../media/types';
@@ -44,6 +45,7 @@ function setupEndOfStream(initialState: EndOfStreamState, initialContext: EndOfS
   // BehaviorCleanup (void | () => void | { destroy }) — the real return is
   // a () => void; cast for callable ergonomics in tests.
   const cleanup = endOfStream.setup({ state, context, config: {} }) as () => void;
+
   return { state, context, cleanup };
 }
 
@@ -52,8 +54,8 @@ function setupEndOfStream(initialState: EndOfStreamState, initialContext: EndOfS
 // ============================================================================
 
 /**
- * Back the mock with a real EventTarget so tests can dispatch sourceopen /
- * sourceended to exercise the behavior's local readyState subscription.
+ * Back the mock with a real EventTarget so tests can dispatch sourceopen / sourceended to exercise the behavior's local
+ * readyState subscription.
  */
 function makeMediaSource(
   overrides: { readyState?: MediaSource['readyState']; duration?: number; sourceBuffers?: SourceBuffer[] } = {}
@@ -67,6 +69,7 @@ function makeMediaSource(
     removeEventListener: { value: target.removeEventListener.bind(target) },
     dispatchEvent: { value: target.dispatchEvent.bind(target) },
   }) as MediaSource;
+
   ms.endOfStream = vi.fn();
   return ms;
 }
@@ -78,6 +81,7 @@ function transitionMediaSource(mediaSource: MediaSource, readyState: MediaSource
 
 function makeSourceBuffer(): SourceBuffer {
   const listeners: Record<string, EventListener[]> = {};
+
   return {
     buffered: { length: 0, start: () => 0, end: () => 0 } as TimeRanges,
     updating: false,
@@ -110,7 +114,9 @@ function makeSegments(count: number): Segment[] {
   }));
 }
 
-function makeResolvedVideoTrack(segmentCount: number, id = 'video-1'): VideoTrack {
+// `complete` toggles the parser's completeness signal: a complete playlist has
+// a finite Track.duration (EXTINF sum), an incomplete (live) one is Infinity.
+function makeResolvedVideoTrack(segmentCount: number, id = 'video-1', complete = true): VideoTrack {
   return {
     id,
     type: 'video' as const,
@@ -120,7 +126,7 @@ function makeResolvedVideoTrack(segmentCount: number, id = 'video-1'): VideoTrac
     initialization: { id: 'init', url: 'https://example.com/init.mp4' },
     segments: makeSegments(segmentCount),
     startTime: 0,
-    duration: segmentCount * 2.5,
+    duration: complete ? segmentCount * 2.5 : Number.POSITIVE_INFINITY,
     codecs: 'avc1.64001f',
   } as unknown as VideoTrack;
 }
@@ -408,6 +414,8 @@ describe('endOfStream', () => {
       type: 'audio',
       url: 'https://example.com/audio.m3u8',
       mimeType: 'audio/mp4',
+      // Complete playlist — finite duration opens the completeness gate.
+      duration: 10,
       segments: makeSegments(4).map((s) => ({ ...s, id: `audio-${s.id}` })),
     } as unknown as VideoTrack;
     const presentation = {
@@ -423,6 +431,48 @@ describe('endOfStream', () => {
     );
 
     const { cleanup } = setupEndOfStream({ presentation }, { mediaSource: mockMs, audioBufferActor });
+
+    await vi.waitFor(() => {
+      expect(mockMs.endOfStream).toHaveBeenCalledTimes(1);
+    });
+    await cleanup();
+  });
+
+  it('does not call endOfStream() for a live (incomplete) playlist even with the last segment appended', async () => {
+    // Live: no #EXT-X-ENDLIST. The "last segment" is only the rolling edge, so
+    // appending it must NOT end the stream — doing so would pin a finite
+    // (live-edge) duration and reopen/re-fire on every reload.
+    const track = makeResolvedVideoTrack(2, 'video-1', false);
+    const mockMs = makeMediaSource();
+    const actor = makeActorWithSegments(['seg-0', 'seg-1']);
+
+    const { cleanup } = setupEndOfStream(
+      { presentation: makePresentation(track) },
+      { mediaSource: mockMs, videoBufferActor: actor }
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(mockMs.endOfStream).not.toHaveBeenCalled();
+    await cleanup();
+  });
+
+  it('calls endOfStream() once a live playlist appends #EXT-X-ENDLIST (graceful end)', async () => {
+    // A live stream that ends appends #EXT-X-ENDLIST; the guard then opens and
+    // end-of-stream fires normally.
+    const liveTrack = makeResolvedVideoTrack(2, 'video-1', false);
+    const mockMs = makeMediaSource();
+    const actor = makeActorWithSegments(['seg-0', 'seg-1']);
+
+    const { state, cleanup } = setupEndOfStream(
+      { presentation: makePresentation(liveTrack) },
+      { mediaSource: mockMs, videoBufferActor: actor }
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(mockMs.endOfStream).not.toHaveBeenCalled();
+
+    // Stream ends: a reload patches in the same window now marked complete.
+    state.presentation.set(makePresentation(makeResolvedVideoTrack(2, 'video-1', true)));
 
     await vi.waitFor(() => {
       expect(mockMs.endOfStream).toHaveBeenCalledTimes(1);

@@ -5,6 +5,8 @@ authors: [steve-heffernan]
 ogImage: '../../assets/blog/2026-03-10-videojs-v10-beta-hello-world-again/og.png'
 ---
 
+import Aside from '@/components/Aside.astro';
+
 Today we're excited to release the Video.js v10.0.0 beta. It's the result of a rather large ground-up rewrite, not just of Video.js ([discussion](https://github.com/videojs/video.js/discussions/9035)) but also of [Plyr](https://github.com/sampotts/plyr/discussions/2871), [Vidstack](https://github.com/vidstack/player/discussions/1747), and [Media Chrome](https://www.mux.com/blog/from-media-chrome-to-video-js-v10-the-evolution-of-html-first-video-players), through a rare teaming-up of open source projects and people who care a lot about web video, with a combined 75,000 github stars and tens of billions of video plays monthly.
 
 I built Video.js 16 years ago to help the transition from Flash to HTML5 video. It's grown a lot since then with the help of [many people](https://github.com/videojs/video.js/graphs/contributors), but the codebase and APIs have continued to reflect a different era of web development. This rebuild modernizes the player both for how developers build today and sets up the foundation for the next significant transition to AI-augmented features and development.
@@ -36,17 +38,17 @@ import '@videojs/react/video/skin.css';
 import { createPlayer } from '@videojs/react';
 import { videoFeatures, VideoSkin, Video } from '@videojs/react/video';
 
-const Player = createPlayer({
+const { Player } = createPlayer({
   features: videoFeatures,
 });
 
 function App() {
   return (
-    <Player.Provider>
+    <Player>
       <VideoSkin>
         <Video src="video.mp4" />
       </VideoSkin>
-    </Player.Provider>
+    </Player>
   );
 }
 ```
@@ -120,26 +122,26 @@ With v10 the file size story doesn't actually start with the baseline builds. Th
 For example here's a simple React "hello world" with just a video and play button, weighing in at **\<5 kB** **gzipped**.
 
 ```tsx
-import { createPlayer, features } from '@videojs/react';
+import { Container, createPlayer, features } from '@videojs/react';
 import { Video } from '@videojs/react/video';
 
-const Player = createPlayer({
+const { Player, usePlayer } = createPlayer({
   features: [features.playback],
 });
 
 function App() {
-  const store = Player.usePlayer();
-  const paused = Player.usePlayer((s) => s.paused);
+  const store = usePlayer();
+  const paused = usePlayer((s) => s.paused);
 
   return (
-    <Player.Provider>
-      <Player.Container>
+    <Player>
+      <Container>
         <Video src="video.mp4" />
         <button onClick={() => (paused ? store.play() : store.pause())}>
           {paused ? 'Play' : 'Pause'}
         </button>
-      </Player.Container>
-    </Player.Provider>
+      </Container>
+    </Player>
   );
 }
 ```
@@ -265,17 +267,17 @@ A default video preset (general website video, the kind of thing you might other
 ```
 
 ```jsx
-const Player = createPlayer({
+const { Player } = createPlayer({
   features: videoFeatures,
 });
 
 function App() {
   return (
-    <Player.Provider>
+    <Player>
       <VideoSkin>
         <Video src="video.mp4" />
       </VideoSkin>
-    </Player.Provider>
+    </Player>
   );
 }
 ```
@@ -291,17 +293,17 @@ A default audio preset (same idea but for the audio tag)
 ```
 
 ```jsx
-const Player = createPlayer({
+const { Player } = createPlayer({
   features: audioFeatures,
 });
 
 function App() {
   return (
-    <Player.Provider>
+    <Player>
       <AudioSkin>
         <Audio src="audio.mp3" />
       </AudioSkin>
-    </Player.Provider>
+    </Player>
   );
 }
 ```
@@ -317,17 +319,17 @@ And a background video preset. Background video is where this concept really sta
 ```
 
 ```jsx
-const Player = createPlayer({
+const { Player } = createPlayer({
   features: backgroundVideoFeatures,
 });
 
 function App() {
   return (
-    <Player.Provider>
+    <Player>
       <BackgroundVideoSkin>
         <BackgroundVideo src="video.mp4" />
       </BackgroundVideoSkin>
-    </Player.Provider>
+    </Player>
   );
 }
 ```
@@ -341,8 +343,8 @@ Over time we'll expand into more use cases: creator-platform players, short-form
 The last year, and even just the last few months specifically have been a wild time to be building a new project like this. We're of course excited for how AI will create interesting interactive player features in the months and years to come and we have a few ideas of what those will be. For Beta, however, we've been focused on the *agent experience* of building video.js-based players with the help of AI.
 
 - Less-abstracted components and unstyled UI primitives so agents can do more with the code right in your project and need fewer external docs
-- [llms.txt](https://videojs.org/llms.txt) to make navigating Video.js docs more efficient, including [framework-specific llms.txt](https://vjs10-site.netlify.app/docs/framework/react/llms.txt)
-- Markdown versions of every [individual doc](https://vjs10-site.netlify.app/docs/framework/react/reference/play-button.md). If your agent hits our site with the accept: text/markdown header — as many like Claude Code do — we'll send the markdown version of the page, saving your agent loads of unnecessary context bloat.
+- [llms.txt](https://videojs.org/llms.txt) to make navigating Video.js docs more efficient, including [framework-specific llms.txt](/docs/framework/react/llms.txt)
+- Markdown versions of every [individual doc](/docs/framework/react/reference/components/play-button.md). If your agent hits our site with the accept: text/markdown header — as many like Claude Code do — we'll send the markdown version of the page, saving your agent loads of unnecessary context bloat.
 - A growing set of AI skills in the repo, currently helping us build and soon will help you build too.
 
 In writing this part and getting input from the team I found we actually have a lot to say about our experience building with AI and the many ways we put it to use, so keep an eye out for a followup post on that topic.
@@ -358,6 +360,10 @@ A few things to know:
 If you're starting something new, this is a good time to try v10. Go to [videojs.org](http://videojs.org) and check out the [installation guide](https://videojs.org/docs/).
 
 If you're running a previous version in production, sit tight. We'll have migration guides before we ask you to move.
+
+<Aside type="note" title="Update, August 2026">
+The migration guides mentioned here (and under "What's coming" below) are now available: [Video.js 8](/docs/framework/html/guides/migrate-from-video-js-8), [Mux Player](/docs/framework/html/guides/migrate-from-mux-player), [Plyr](/docs/framework/html/guides/migrate-from-plyr), and [Media Chrome](/docs/framework/html/guides/migrate-from-media-chrome).
+</Aside>
 
 ## What's coming
 

@@ -1,13 +1,21 @@
-import { act, render, renderHook } from '@testing-library/react';
-import type { PlayerStore } from '@videojs/core/dom';
+import { act, cleanup, render, renderHook, screen, waitFor } from '@testing-library/react';
+import { features, metadataFeature, type PlayerStore } from '@videojs/core/dom';
 import { defineSlice } from '@videojs/store';
-import type { ReactNode } from 'react';
-import { StrictMode, useState } from 'react';
-import { describe, expect, it, vi } from 'vitest';
-import { usePlayerContext } from '../context';
+import { Component, type ErrorInfo, type ReactNode, StrictMode, useState } from 'react';
+import { renderToString } from 'react-dom/server';
+import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
+
+import { I18nProvider, useLocale } from '../../i18n';
+import { Container } from '../../index';
+import { useContainer, usePlayerContext } from '../context';
 import { createPlayer } from '../create-player';
 
 describe('createPlayer', () => {
+  afterEach(() => {
+    cleanup();
+    document.documentElement.removeAttribute('lang');
+  });
+
   // Create a mock slice that works with any target
   const mockSlice = defineSlice()({
     state: () => ({
@@ -17,9 +25,9 @@ describe('createPlayer', () => {
     }),
   });
 
-  describe('Provider', () => {
+  describe('Player', () => {
     it('creates store on mount', () => {
-      const { Provider, usePlayer } = createPlayer({ features: [mockSlice] });
+      const { Player, usePlayer } = createPlayer({ features: [mockSlice] });
 
       let store!: PlayerStore;
 
@@ -29,9 +37,9 @@ describe('createPlayer', () => {
       }
 
       render(
-        <Provider>
+        <Player>
           <TestComponent />
-        </Provider>
+        </Player>
       );
 
       expect(store).toBeDefined();
@@ -43,7 +51,7 @@ describe('createPlayer', () => {
     it('destroys store on unmount', () => {
       vi.useFakeTimers();
 
-      const { Provider, usePlayer } = createPlayer({ features: [mockSlice] });
+      const { Player, usePlayer } = createPlayer({ features: [mockSlice] });
 
       let store!: PlayerStore;
 
@@ -53,12 +61,13 @@ describe('createPlayer', () => {
       }
 
       const { unmount } = render(
-        <Provider>
+        <Player>
           <TestComponent />
-        </Provider>
+        </Player>
       );
 
       const destroySpy = vi.spyOn(store, 'destroy');
+
       unmount();
       vi.runAllTimers();
 
@@ -68,7 +77,7 @@ describe('createPlayer', () => {
     });
 
     it('recovers after Activity-style async destroy (React <Activity>)', () => {
-      const { Provider, usePlayer } = createPlayer({ features: [mockSlice] });
+      const { Player, usePlayer } = createPlayer({ features: [mockSlice] });
 
       let store!: PlayerStore;
       // Captured inside TestComponent so we can trigger a media-dep change
@@ -78,17 +87,19 @@ describe('createPlayer', () => {
       function TestComponent() {
         store = usePlayer();
         const { setMedia } = usePlayerContext();
+
         setMediaFn = setMedia;
         return null;
       }
 
       render(
-        <Provider>
+        <Player>
           <TestComponent />
-        </Provider>
+        </Player>
       );
 
       const originalStore = store;
+
       expect(originalStore.destroyed).toBe(false);
 
       // Simulate the Activity gap: the deferred timeout fires before React gets
@@ -108,8 +119,35 @@ describe('createPlayer', () => {
       expect(store).not.toBe(originalStore);
     });
 
+    it('seeds current config inputs when replacing a destroyed store', () => {
+      const { Player, usePlayer } = createPlayer({ features: [metadataFeature] });
+      let store!: PlayerStore<[typeof metadataFeature]>;
+      let setMedia!: (media: HTMLMediaElement | null) => void;
+
+      function Consumer() {
+        store = usePlayer();
+        setMedia = usePlayerContext().setMedia;
+        return null;
+      }
+
+      render(
+        <Player title="Replacement title">
+          <Consumer />
+        </Player>
+      );
+
+      const destroyedStore = store;
+
+      destroyedStore.destroy();
+
+      act(() => setMedia(document.createElement('video')));
+
+      expect(store).not.toBe(destroyedStore);
+      expect(store.title).toBe('Replacement title');
+    });
+
     it('survives React StrictMode without StoreError', () => {
-      const { Provider, usePlayer } = createPlayer({ features: [mockSlice] });
+      const { Player, usePlayer } = createPlayer({ features: [mockSlice] });
 
       let store!: PlayerStore;
 
@@ -121,9 +159,9 @@ describe('createPlayer', () => {
       expect(() => {
         render(
           <StrictMode>
-            <Provider>
+            <Player>
               <TestComponent />
-            </Provider>
+            </Player>
           </StrictMode>
         );
       }).not.toThrow();
@@ -135,7 +173,7 @@ describe('createPlayer', () => {
     it('StrictMode: preserves the same store instance and cancels the pending destroy', () => {
       vi.useFakeTimers();
 
-      const { Provider, usePlayer } = createPlayer({ features: [mockSlice] });
+      const { Player, usePlayer } = createPlayer({ features: [mockSlice] });
 
       // Track every store instance the component sees across all renders.
       const seenStores = new Set<PlayerStore>();
@@ -149,9 +187,9 @@ describe('createPlayer', () => {
 
       render(
         <StrictMode>
-          <Provider>
+          <Player>
             <TestComponent />
-          </Provider>
+          </Player>
         </StrictMode>
       );
 
@@ -169,45 +207,256 @@ describe('createPlayer', () => {
     });
 
     it('uses displayName when provided', () => {
-      const { Provider } = createPlayer({
+      const { Player } = createPlayer({
         features: [mockSlice],
         displayName: 'VideoPlayer',
       });
 
-      expect(Provider.displayName).toBe('VideoPlayer.Provider');
+      expect(Player.displayName).toBe('VideoPlayer');
     });
 
     it('renders children', () => {
-      const { Provider } = createPlayer({ features: [mockSlice] });
+      const { Player } = createPlayer({ features: [mockSlice] });
 
       const { container } = render(
-        <Provider>
+        <Player>
           <span data-testid="child">test</span>
-        </Provider>
+        </Player>
       );
 
       expect(container.querySelector('[data-testid="child"]')).toBeTruthy();
     });
 
+    it('seeds config inputs for the first render and syncs only changed props after commit', () => {
+      const { Player, usePlayer } = createPlayer({ features: [metadataFeature] });
+      let store!: PlayerStore<[typeof metadataFeature]>;
+
+      function Consumer() {
+        store = usePlayer();
+        return <span>{store.title}</span>;
+      }
+
+      const { rerender } = render(
+        <Player title="Initial title">
+          <Consumer />
+        </Player>
+      );
+
+      expect(screen.getByText('Initial title')).toBeTruthy();
+
+      rerender(
+        <Player title="Updated title">
+          <Consumer />
+        </Player>
+      );
+      expect(store.title).toBe('Updated title');
+
+      // Dropping the prop clears the override, leaving what the media carries.
+      rerender(
+        <Player>
+          <Consumer />
+        </Player>
+      );
+      expect(store.title).toBe('');
+    });
+
+    it('applies orientation lock configuration through props', () => {
+      const { Player, usePlayer } = createPlayer({ features: [features.orientationLock] });
+
+      let store!: PlayerStore<[typeof features.orientationLock]>;
+
+      function Consumer() {
+        store = usePlayer();
+        return <span>{store.orientationLockType}</span>;
+      }
+
+      const { rerender } = render(
+        <Player orientationLockType="portrait">
+          <Consumer />
+        </Player>
+      );
+
+      expect(screen.getByText('portrait')).toBeTruthy();
+
+      rerender(
+        <Player orientationLockType="natural">
+          <Consumer />
+        </Player>
+      );
+      expect(store.orientationLockType).toBe('natural');
+
+      rerender(
+        <Player>
+          <Consumer />
+        </Player>
+      );
+      expect(store.orientationLockType).toBe('landscape');
+    });
+
+    it('seeds config inputs during SSR', () => {
+      const { Player, usePlayer } = createPlayer({ features: [metadataFeature] });
+
+      function Consumer() {
+        return <span>{usePlayer((state) => state.title)}</span>;
+      }
+
+      expect(
+        renderToString(
+          <Player title="SSR title">
+            <Consumer />
+          </Player>
+        )
+      ).toContain('SSR title');
+    });
+
+    it('hydrates with the same initial config inputs', async () => {
+      const { Player, usePlayer } = createPlayer({ features: [metadataFeature] });
+
+      function Consumer() {
+        return <span>{usePlayer((state) => state.title)}</span>;
+      }
+
+      const container = document.createElement('div');
+
+      container.innerHTML = renderToString(
+        <Player title="Hydrated title">
+          <Consumer />
+        </Player>
+      );
+
+      const view = render(
+        <Player title="Hydrated title">
+          <Consumer />
+        </Player>,
+        { container, hydrate: true }
+      );
+
+      await act(async () => {});
+
+      expect(container.textContent).toBe('Hydrated title');
+      view.unmount();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    it('does not apply config inputs from an abandoned render', () => {
+      const { Player, usePlayer } = createPlayer({ features: [metadataFeature] });
+      let store!: PlayerStore<[typeof metadataFeature]>;
+
+      class Boundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+        state = { failed: false };
+
+        static getDerivedStateFromError() {
+          return { failed: true };
+        }
+
+        override componentDidCatch(_error: Error, _info: ErrorInfo) {}
+
+        override render() {
+          return this.state.failed ? null : this.props.children;
+        }
+      }
+
+      function Consumer({ fail = false }: { fail?: boolean }) {
+        store = usePlayer();
+
+        if (fail) throw new Error('abandon render');
+
+        return null;
+      }
+
+      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const { rerender } = render(
+        <Boundary>
+          <Player title="Committed title">
+            <Consumer />
+          </Player>
+        </Boundary>
+      );
+      const committedStore = store;
+
+      rerender(
+        <Boundary>
+          <Player title="Abandoned title">
+            <Consumer fail />
+          </Player>
+        </Boundary>
+      );
+
+      expect(committedStore.title).toBe('Committed title');
+      consoleError.mockRestore();
+    });
+
+    it('does not derive a locale without an I18nProvider', async () => {
+      document.documentElement.lang = 'de';
+      const { Player } = createPlayer({ features: [mockSlice] });
+
+      function Locale() {
+        const container = useContainer();
+        const locale = useLocale();
+
+        return <span>{container ? locale : 'pending'}</span>;
+      }
+
+      render(
+        <Player>
+          <Container>
+            <Locale />
+          </Container>
+        </Player>
+      );
+
+      await waitFor(() => {
+        expect(screen.queryByText('en')).not.toBeNull();
+      });
+    });
+
+    it('inherits an explicit I18nProvider', async () => {
+      const { Player } = createPlayer({ features: [mockSlice] });
+
+      function Locale() {
+        const container = useContainer();
+        const locale = useLocale();
+
+        return <span>{container ? locale : 'pending'}</span>;
+      }
+
+      render(
+        <I18nProvider locale="de">
+          <Player>
+            <Container>
+              <Locale />
+            </Container>
+          </Player>
+        </I18nProvider>
+      );
+
+      await waitFor(() => {
+        expect(screen.queryByText('de')).not.toBeNull();
+      });
+    });
+
     it('provides a stable context value across parent re-renders (fix for #1296)', () => {
-      const { Provider } = createPlayer({ features: [mockSlice] });
+      const { Player } = createPlayer({ features: [mockSlice] });
 
       const receivedValues: unknown[] = [];
 
       function ContextConsumer() {
         const ctx = usePlayerContext();
+
         receivedValues.push(ctx);
         return null;
       }
 
       let forceParentRerender!: () => void;
+
       function Parent() {
         const [, setTick] = useState(0);
+
         forceParentRerender = () => setTick((t) => t + 1);
         return (
-          <Provider>
+          <Player>
             <ContextConsumer />
-          </Provider>
+          </Player>
         );
       }
 
@@ -227,9 +476,9 @@ describe('createPlayer', () => {
 
   describe('usePlayer', () => {
     it('returns store without selector', () => {
-      const { Provider, usePlayer } = createPlayer({ features: [mockSlice] });
+      const { Player, usePlayer } = createPlayer({ features: [mockSlice] });
 
-      const wrapper = ({ children }: { children: ReactNode }) => <Provider>{children}</Provider>;
+      const wrapper = ({ children }: { children: ReactNode }) => <Player>{children}</Player>;
 
       const { result } = renderHook(() => usePlayer(), { wrapper });
 
@@ -239,38 +488,37 @@ describe('createPlayer', () => {
     });
 
     it('returns selected state with selector', () => {
-      const { Provider, usePlayer } = createPlayer({ features: [mockSlice] });
+      const { Player, usePlayer } = createPlayer({ features: [mockSlice] });
 
-      const wrapper = ({ children }: { children: ReactNode }) => <Provider>{children}</Provider>;
+      const wrapper = ({ children }: { children: ReactNode }) => <Player>{children}</Player>;
 
       const { result } = renderHook(() => usePlayer((state: any) => state.volume), { wrapper });
 
       expect(result.current).toBe(1);
     });
 
-    it('throws outside Provider', () => {
+    it('throws outside Player', () => {
       const { usePlayer } = createPlayer({ features: [mockSlice] });
 
       const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
       expect(() => {
         renderHook(() => usePlayer());
-      }).toThrow('usePlayerContext must be used within a Player Provider');
+      }).toThrow('usePlayerContext must be used within a Player');
 
       consoleSpy.mockRestore();
     });
   });
 
   describe('Container', () => {
-    it('is exported from createPlayer result', () => {
-      const { Container } = createPlayer({ features: [mockSlice] });
+    it('is imported independently of createPlayer', () => {
       expect(Container).toBeDefined();
     });
   });
 
   describe('full integration', () => {
-    it('Provider → Container → media attach flow', () => {
-      const { Provider, Container, usePlayer } = createPlayer({ features: [mockSlice] });
+    it('Player → Container → media attach flow', () => {
+      const { Player, usePlayer } = createPlayer({ features: [mockSlice] });
 
       let store!: PlayerStore;
 
@@ -286,9 +534,9 @@ describe('createPlayer', () => {
       }
 
       const { container } = render(
-        <Provider>
+        <Player>
           <TestComponent />
-        </Provider>
+        </Player>
       );
 
       // Store should exist
@@ -296,10 +544,12 @@ describe('createPlayer', () => {
 
       // Container should render
       const containerEl = container.querySelector('[data-testid="container"]');
+
       expect(containerEl).toBeTruthy();
 
       // Video should render inside container
       const videoEl = container.querySelector('[data-testid="video"]');
+
       expect(videoEl).toBeTruthy();
     });
   });

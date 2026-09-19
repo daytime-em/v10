@@ -6,6 +6,7 @@ export interface ApiReferenceSection {
   title: string;
   id: string;
   depth: number;
+  frameworks?: SupportedFramework[];
   tocKind?: string;
 }
 
@@ -79,10 +80,18 @@ function createSections(
   source: PartReference | ComponentReference,
   options: { forPart: true; partId: string } | { forPart: false }
 ): ApiReferenceSection[] {
-  return API_REFERENCE_SUBSECTIONS.flatMap((definition) => {
+  const sections: ApiReferenceSection[] = API_REFERENCE_SUBSECTIONS.flatMap((definition) => {
     if (!hasEntries(source[definition.key])) {
       return [];
     }
+
+    const frameworks: SupportedFramework[] | undefined =
+      definition.key === 'props'
+        ? ([
+            ...new Set(Object.values(source.props).flatMap((prop) => prop.frameworks ?? (['html', 'react'] as const))),
+          ] as SupportedFramework[])
+        : undefined;
+    const frameworkRestriction = frameworks?.length === 1 ? { frameworks } : {};
 
     if (options.forPart) {
       return [
@@ -92,6 +101,7 @@ function createSections(
           id: `${options.partId}-${definition.suffix}`,
           depth: 4,
           tocKind: 'api-reference-subsection',
+          ...frameworkRestriction,
         },
       ];
     }
@@ -102,9 +112,26 @@ function createSections(
         title: definition.title,
         id: definition.singleId,
         depth: 3,
+        ...frameworkRestriction,
       },
     ];
   });
+
+  if (source.platforms.html?.events?.length) {
+    const section: ApiReferenceSection = {
+      key: 'events',
+      title: 'Events',
+      id: options.forPart ? `${options.partId}-events` : 'events',
+      depth: options.forPart ? 4 : 3,
+      frameworks: ['html'],
+    };
+
+    if (options.forPart) section.tocKind = 'api-reference-subsection';
+
+    sections.push(section);
+  }
+
+  return sections;
 }
 
 export function createComponentReferenceModel(
@@ -123,9 +150,11 @@ export function createComponentReferenceModel(
 
     if (partOrder) {
       const orderMap = new Map(partOrder.map((id, i) => [id, i]));
+
       partEntries = partEntries.slice().sort((a, b) => {
         const ai = orderMap.has(a[0]) ? orderMap.get(a[0])! : Number.MAX_SAFE_INTEGER;
         const bi = orderMap.has(b[0]) ? orderMap.get(b[0])! : Number.MAX_SAFE_INTEGER;
+
         return ai - bi;
       });
     }
@@ -199,6 +228,7 @@ export function buildComponentReferenceTocHeadings(apiReferenceModel: ComponentR
           frameworks: ['react'],
         });
       }
+
       if (part.frameworks.includes('html')) {
         headings.push({
           depth: 3,
@@ -209,12 +239,16 @@ export function buildComponentReferenceTocHeadings(apiReferenceModel: ComponentR
       }
 
       for (const section of part.sections) {
+        const frameworks = section.frameworks
+          ? part.frameworks.filter((framework) => section.frameworks!.includes(framework))
+          : part.frameworks;
+
         headings.push({
           depth: section.depth,
           text: section.title,
           slug: section.id,
           tocKind: section.tocKind,
-          ...(part.frameworks.length < 2 ? { frameworks: part.frameworks } : {}),
+          ...(frameworks.length < 2 ? { frameworks } : {}),
         });
       }
     }
@@ -227,6 +261,7 @@ export function buildComponentReferenceTocHeadings(apiReferenceModel: ComponentR
       depth: section.depth,
       text: section.title,
       slug: section.id,
+      ...(section.frameworks ? { frameworks: section.frameworks } : {}),
     });
   }
 

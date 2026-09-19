@@ -5,7 +5,7 @@ For docs, blog, and more: [videojs.org](https://videojs.org).
 Mostly a standard [Astro](https://astro.build/) project.
 
 > [!NOTE]
-> This README serves as a high-level introduction to the site. For detailed technical documentation — architecture, conventions, patterns, quirks, features — see [CLAUDE.md](CLAUDE.md). It may be written for Claude, but it's useful for humans, too ;)
+> This README is the site overview. Agent-specific gotchas and source pointers live in [AGENTS.md](AGENTS.md).
 
 ## Project Structure
 
@@ -33,32 +33,33 @@ Mostly a standard [Astro](https://astro.build/) project.
 │  ├── content.config.ts     # Content collection schemas
 │  ├── docs.config.ts        # Docs sidebar structure
 │  └── test-setup.ts         # Vitest setup
-├── astro.config.mjs
-├── CLAUDE.md                # Detailed technical docs for this site
+├── astro.config.ts
+├── AGENTS.md                # Agent guidance and site-specific gotchas
 ├── package.json
 ├── README.md
 ├── TODO.md
 ├── tsconfig.json
-└── vitest.config.ts
+└── vite.config.ts           # Vite+, Vitest, and site task configuration
 ```
 
 ## Commands
 
 If you're in the monorepo's root...
 
-| Command           | Action                                      |
-| :---------------- | :------------------------------------------ |
-| `pnpm dev:site`   | Starts local dev server at `localhost:4321` |
-| `pnpm build:site` | Build the production site to `site/dist/`   |
+| Command                   | Action                                                                                                                                  |
+| :------------------------ | :-------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm dev:site`           | Starts local dev server at `localhost:4321`; generates API references, the CDN manifest, and package builds only when they are missing |
+| `pnpm dev:site --prepare` | Same, but regenerates API references and rebuilds packages first (after changing package source or JSDoc)                            |
+| `pnpm build:site`         | Build the production site to `site/dist/`                                                                                            |
 
 If you're in `site/`...
 
 | Command              | Action                                           |
 | :------------------- | :----------------------------------------------- |
 | `pnpm install`       | Installs dependencies                            |
-| `pnpm dev`           | Starts local dev server at `localhost:4321`      |
-| `pnpm build`         | Build your production site to `./dist/`          |
-| `pnpm preview`       | Preview your build locally, before deploying     |
+| `pnpm exec vp run dev`   | Starts local dev server at `localhost:4321` (expects generated content; run `pnpm exec vp run dev:prepare` first) |
+| `pnpm exec vp run build` | Build your production site to `./dist/`      |
+| `pnpm astro preview`     | Preview your build locally, before deploying |
 | `pnpm api-docs`      | Regenerate API reference JSON from TypeScript    |
 | `pnpm astro ...`     | Run CLI commands like `astro add`, `astro check` |
 | `pnpm test`          | Run tests with Vitest                            |
@@ -77,18 +78,20 @@ The site deploys via Netlify from two branches:
 
 On each release, the CD workflow force-pushes `main` to `site/v10`, keeping production docs in sync with published packages.
 
-**Fixing a typo without cutting a release:** Land the fix on `main` first, then cherry-pick to `site/v10`. The next release's force-push already includes the fix (since it came from `main`), so nothing gets lost. The `site/v10` branch is protected — direct pushes are restricted to the CD bot.
+**Changelog prose and blog posts** arrive between releases. The prose bot only starts once the release is published, so its PR lands on `main` after production has already moved, and blog posts merge whenever they are ready. The [Forward-port changelog and blog](../.github/workflows/forward-port-changelog.yml) workflow closes the gap: whenever `src/content/changelog/`, `src/content/blog/`, `src/assets/blog/`, or `src/content/authors.json` changes on `main`, it copies the changed paths onto `site/v10`. No cherry-pick needed. A blog post that merges before it should be public needs `devOnly: true` in its frontmatter, and a post that imports a component new to `main` needs the cherry-pick route below instead, since only those paths are copied.
+
+**Fixing a typo without cutting a release:** Land the fix on `main` first, then cherry-pick to `site/v10`. The next release's force-push already includes the fix (since it came from `main`), so nothing gets lost. Treat `site/v10` as bot-owned — it is rewritten from `main` on every release, so anything pushed there that isn't also on `main` disappears at the next cut.
 
 ## Environment Variables
 
-The installation page's video uploader uses OAuth + Mux. See [CLAUDE.md](CLAUDE.md) for the full list of environment variables. The site works without these — the uploader just won't be available.
+The installation page's video uploader uses OAuth + Mux. The environment schema in [`astro.config.ts`](astro.config.ts) is the current variable list. The site works without these variables; the uploader is simply unavailable.
 
 ## Technology Stack
 
 Here are some of the technologies you should get to know when you're building this site:
 
 - [**Astro**](https://astro.build) - Mostly-static site generation with [island architecture](https://docs.astro.build/en/concepts/islands/)
-- [**Tailwind v4**](https://tailwindcss.com) - CSS utility class generator. We use custom tokens — see [globals.css](styles/globals.css) before reaching for standard Tailwind classes. We also have a few patterns we try to stick to — see [CLAUDE.md](CLAUDE.md) for details.
+- [**Tailwind v4**](https://tailwindcss.com) - CSS utility class generator. Inspect [`src/styles/globals.css`](src/styles/globals.css) before reaching for standard Tailwind classes; agent-specific gotchas are indexed in [AGENTS.md](AGENTS.md).
 - [**clsx**](https://github.com/lukeed/clsx) - Class name concatenation (in React; Astro has `class:list`)
 - [**React**](https://react.dev) - Most of our client-side interactivity is built with React components. **React Compiler is enabled**.
 - [**Nanostores**](https://github.com/nanostores/nanostores) - Shared client-side state (React Context doesn't work across islands)
@@ -113,7 +116,7 @@ The only weird thing about the blog? Blog posts use date-prefixed filenames: `YY
 
 ### Guides
 
-You'll learn most of what you need to know about writing guides by reading [`src/content/docs/how-to/write-guides.mdx`](src/content/docs/how-to/write-guides.mdx).
+You'll learn most of what you need to know about writing guides by reading [`src/content/docs/writing-style/write-guides.mdx`](src/content/docs/writing-style/write-guides.mdx).
 
 High-level primer?
 
@@ -131,14 +134,14 @@ We want docs to feel idiomatic, no matter your framework or styling preference. 
 
 We currently support two frameworks (HTML, React) and one styling approach (CSS). This is defined in [types/docs.ts](src/types/docs.ts).
 
-Every doc generates a route per framework. E.g., `how-to/installation.mdx` becomes:
+Every doc generates a route per framework. E.g., `guides/installation.mdx` becomes:
 
-- `/docs/framework/html/how-to/installation/`
-- `/docs/framework/react/how-to/installation/`
+- `/docs/framework/html/guides/installation/`
+- `/docs/framework/react/guides/installation/`
 
 Content that applies to only certain frameworks or styles can be restricted in two ways:
 
-1. Within the MDX content itself, by wrapping framework- or style-specific content in `<FrameworkCase>` or `<StyleCase>` components. (Read more about these components in [`src/content/docs/how-to/write-guides.mdx`](src/content/docs/how-to/write-guides.mdx).)
+1. Within the MDX content itself, by wrapping framework- or style-specific content in `<FrameworkCase>` or `<StyleCase>` components. (Read more about these components in [`src/content/docs/writing-style/write-guides.mdx`](src/content/docs/writing-style/write-guides.mdx).)
 2. In the sidebar config ([docs.config.ts](src/docs.config.ts)), by specifying `frameworks` on a per-guide basis, e.g.,
 
 ```ts
@@ -146,9 +149,9 @@ const sidebar: Sidebar = [
   {
     sidebarLabel: "Getting started",
     contents: [
-      { slug: "how-to/installation" }, // Available to all
+      { slug: "guides/installation" }, // Available to all
       {
-        slug: "how-to/react-hooks",
+        slug: "guides/react-hooks",
         frameworks: ["react"], // Only for React
       },
     ],
@@ -164,22 +167,21 @@ Use `ogTitle` in docs/blog frontmatter when the page title is too long for the s
 
 ### References
 
-API reference pages are generated from TypeScript source code by the builder in [`scripts/api-docs-builder/`](scripts/api-docs-builder/). It extracts props, state, data attributes, and part information, then outputs JSON to `src/content/generated-api-reference/` (gitignored).
+API reference pages are generated from TypeScript source code by the builder in [`scripts/api-docs-builder/`](scripts/api-docs-builder/). It extracts component, utility, feature, media, and preset information into the gitignored `src/content/generated-*-reference/` collections.
 
-The JSON is regenerated automatically on `pnpm dev` and `pnpm build`, or manually via `pnpm api-docs`.
+The JSON is regenerated automatically by the root `pnpm dev` and `pnpm build` commands, or manually via `pnpm api-docs`.
 
 See [`scripts/api-docs-builder/README.md`](scripts/api-docs-builder/README.md) for full documentation.
 
-## MDX Plugins
+## Markdown plugins
 
-MDX content is transformed by custom remark/rehype plugins during build:
+Astro uses the Satteri Markdown processor with custom MDAST plugins configured in [`astro.config.ts`](astro.config.ts):
 
-- **remarkConditionalHeadings** — Tracks which headings are inside `<FrameworkCase>` / `<StyleCase>` so the table of contents only shows headings relevant to the active framework and style. Also injects API reference headings into the TOC.
-- **remarkReadingTime** — Calculates and injects reading time metadata
-- **rehypePrepareCodeBlocks** — Prepares code blocks for styled rendering in tabs
-- **shikiTransformMetadata** — Enables `title="..."` on code fences
+- [`satteriConditionalHeadings`](src/utils/satteriConditionalHeadings.ts) tracks conditional headings and generated API-reference headings.
+- [`satteriReadingTime`](src/utils/satteriReadingTime.ts) derives reading-time frontmatter.
+- [`satteriCodeFrame`](src/utils/satteriCodeFrame.ts) wraps standalone fenced code blocks in the site code-frame component.
 
-See [CLAUDE.md](CLAUDE.md) for details on each plugin.
+The plugin implementations and tests are the source of truth for their behavior.
 
 ## Custom Integrations
 
@@ -191,6 +193,6 @@ Search is powered by [Algolia DocSearch v4](https://docsearch.algolia.com). Conf
 
 One custom Astro integration in `integrations/`:
 
-- **llms-markdown** — Generates LLM-optimized `.md` files and `llms.txt` index from `[data-llms-content]` elements
+- **llms-markdown** — Generates LLM-optimized `.md` files and `llms.txt` indexes from `[data-llms-content]` elements
 
-See [CLAUDE.md](CLAUDE.md) for implementation details.
+Read [`integrations/llms-markdown.ts`](integrations/llms-markdown.ts) for implementation details.

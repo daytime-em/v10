@@ -2,12 +2,17 @@
 
 [![package-badge]][package]
 
-> **⚠️ Beta** Experimental adoption in real projects.
+> **⚠️ Release candidate** Close to stable. Adoption in real projects encouraged.
 
 ## Overview
 
 `@videojs/spf` is a lightweight, bundle-size-optimized streaming engine for Video.js 10. It provides
 HLS playback with adaptive bitrate switching, WebVTT captions, and MSE support.
+
+## Concepts
+
+- [SPF fundamentals](./docs/fundamentals.md)
+- [HLS engine composition](./docs/hls-engine.md)
 
 ## Community
 

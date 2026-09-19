@@ -1,6 +1,7 @@
+import type { MediaBufferState } from '@videojs/media';
+import { isMediaBufferCapable } from '@videojs/media';
 import { listen, serializeTimeRanges } from '@videojs/utils/dom';
-import { isMediaBufferCapable } from '../../../core/media/predicate';
-import type { MediaBufferState } from '../../../core/media/state';
+
 import { definePlayerFeature } from '../../feature';
 
 export const bufferFeature = definePlayerFeature({
@@ -12,7 +13,6 @@ export const bufferFeature = definePlayerFeature({
 
   attach({ target, signal, set }) {
     const { media } = target;
-
     if (!isMediaBufferCapable(media)) return;
 
     const sync = () =>
@@ -23,6 +23,8 @@ export const bufferFeature = definePlayerFeature({
 
     sync();
 
+    listen(media, 'loadedmetadata', sync, { signal });
+    listen(media, 'durationchange', sync, { signal });
     listen(media, 'progress', sync, { signal });
     listen(media, 'emptied', sync, { signal });
   },

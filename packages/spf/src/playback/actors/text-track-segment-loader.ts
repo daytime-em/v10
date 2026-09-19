@@ -6,7 +6,15 @@ import {
   type ForwardBufferConfig,
   getSegmentsToLoad,
 } from '../../media/buffer/forward-buffer';
-import type { Cue, Segment, TextTrack } from '../../media/types';
+import type { Cue, TextTrack } from '../../media/types';
+import {
+  DEFAULT_TEXT_MESSAGE_PIPELINES,
+  type TextFrame,
+  type TextLoadTask,
+  type TextMessagePipelines,
+  type TextStepDeps,
+  type TextTrackSegmentResolver,
+} from '../primitives/text-segment-load-pipeline';
 import type { TextTracksActor } from './text-tracks';
 
 // =============================================================================
@@ -14,11 +22,9 @@ import type { TextTracksActor } from './text-tracks';
 // =============================================================================
 
 /**
- * Mirrors the v/a `SegmentLoaderMessage` shape. `range` carries the
- * forward-window anchor (`range.start` is treated as the load anchor;
- * the actor computes its own forward window internally via
- * `getSegmentsToLoad`). When `range` is omitted (metadata mode), this
- * actor is a no-op — text tracks have no init-segment concept.
+ * Mirrors the v/a `SegmentLoaderMessage` shape. `range` carries the forward-window anchor (`range.start` is treated as
+ * the load anchor; the actor computes its own forward window internally via `getSegmentsToLoad`). When `range` is
+ * omitted (metadata mode), this actor is a no-op — text tracks have no init-segment concept.
  */
 export type TextTrackSegmentLoaderMessage = {
   type: 'load';
@@ -32,15 +38,13 @@ export type TextTrackSegmentLoaderActorState = 'idle' | 'loading' | 'destroyed';
 /** Non-finite (extended) data managed by the actor. */
 export interface TextTrackSegmentLoaderActorContext {
   /**
-   * Track ID of the segment currently being fetched, or null. Paired
-   * with `inFlightSegmentId` so the continue-vs-preempt check survives
-   * cross-track segment-id collisions (e.g. each track starts at
-   * `seg-0`).
+   * Track ID of the segment currently being fetched, or null. Paired with `inFlightSegmentId` so the
+   * continue-vs-preempt check survives cross-track segment-id collisions (e.g. each track starts at `seg-0`).
    */
   inFlightTrackId: string | null;
   /**
-   * Segment ID currently being fetched, or null. Used together with
-   * `inFlightTrackId` by the `loading` state's `load` handler.
+   * Segment ID currently being fetched, or null. Used together with `inFlightTrackId` by the `loading` state's `load`
+   * handler.
    */
   inFlightSegmentId: string | null;
 }
@@ -52,85 +56,76 @@ export type TextTrackSegmentLoaderActor = MessageActor<
 >;
 
 /**
- * Resolves a text-track segment URL into the array of cues it contains.
- *
- * "Resolve" because the fn covers both network fetch and parse into the
- * domain model. Host-agnostic — the concrete resolver (e.g. the
- * browser's native VTT resolver) is supplied at engine-assembly time,
- * so this actor stays DOM-free.
+ * Configuration for `createTextTrackSegmentLoaderActor`. Spread over `DEFAULT_FORWARD_BUFFER_CONFIG` to override
+ * individual forward-window fields (e.g. `bufferDuration`). Text tracks don't have a back-buffer concern — cues evict
+ * by their playhead-relative window at runtime — so no `backBuffer` config field.
  */
-export type TextTrackSegmentResolver<C extends Cue = Cue> = (url: string) => Promise<C[]>;
-
-/**
- * Configuration for `createTextTrackSegmentLoaderActor`. Spread over
- * `DEFAULT_FORWARD_BUFFER_CONFIG` to override individual forward-window
- * fields (e.g. `bufferDuration`). Text tracks don't have a back-buffer
- * concern — cues evict by their playhead-relative window at runtime —
- * so no `backBuffer` config field.
- */
-export interface TextTrackSegmentLoaderActorConfig {
+export interface TextTrackSegmentLoaderActorConfig<C extends Cue = Cue> {
   forwardBuffer?: Partial<ForwardBufferConfig>;
+  /** Ordered step pipeline. Defaults to {@link DEFAULT_TEXT_MESSAGE_PIPELINES} (`resolveCues → dispatchCues`). */
+  messagePipelines?: TextMessagePipelines<C>;
 }
 
 // =============================================================================
 // Implementation
 // =============================================================================
 
-/** Internal load-task descriptor — one segment fetch + dispatch unit. */
-interface TextLoadTask {
-  segment: Segment;
-  trackId: string;
-}
-
 /**
- * Loads text-track segments for a track and delegates cue management
- * to a TextTracksActor. Mirrors the v/a `SegmentLoaderActor` shape (FSM
- * with `idle` / `loading` and `inFlight*` context for continue-vs-preempt),
- * adapted to text:
+ * Loads text-track segments for a track and delegates cue management to a TextTracksActor. Mirrors the v/a
+ * `SegmentLoaderActor` shape (FSM with `idle` / `loading` and `inFlight*` context for continue-vs-preempt), adapted to
+ * text:
  *
- * - No init segment, no flush ops (text cues don't need eviction — they're
- *   small and the playhead-relative window is enforced by the runtime).
- * - Single in-flight identity (`inFlightSegmentId`) — text has only the
- *   media-segment path, no init-segment path.
+ * - No init segment, no flush ops (text cues don't need eviction — they're small and the playhead-relative window is
+ *   enforced by the runtime).
+ * - Single in-flight identity (`inFlightSegmentId`) — text has only the media-segment path, no init-segment path.
  *
- * Planning is done in the load handler on every incoming message:
- * `getSegmentsToLoad` filters to the forward window, then the segments
- * not already in `TextTracksActor`'s context are scheduled. When a new
- * `load` arrives mid-run, the handler replans and either:
+ * Planning is done in the load handler on every incoming message: `getSegmentsToLoad` filters to the forward window,
+ * then the segments not already in `TextTracksActor`'s context are scheduled. When a new `load` arrives mid-run, the
+ * handler replans and either:
  *
- * - **Continues**: the in-flight segment is still in the new plan →
- *   `abortPending` only, schedule the rest of the plan (minus the
- *   in-flight item, which covers its slot).
- * - **Preempts**: in-flight segment is no longer wanted (track switch,
- *   large seek out of window) → `abortAll`, schedule the new plan
- *   from scratch.
+ * - **Continues**: the in-flight segment is still in the new plan → `abortPending` only, schedule the rest of the plan
+ *   (minus the in-flight item, which covers its slot).
+ * - **Preempts**: in-flight segment is no longer wanted (track switch, large seek out of window) → `abortAll`, schedule
+ *   the new plan from scratch.
  *
- * The cue parser is injected so this factory is host-agnostic. A DOM
- * host supplies a VTT parser backed by `<track>`/`TextTrack` APIs; a
- * non-DOM host (worker, test fake, alternate runtime) supplies its own.
+ * The cue parser is injected so this factory is host-agnostic. A DOM host supplies a VTT parser backed by
+ * `<track>`/`TextTrack` APIs; a non-DOM host (worker, test fake, alternate runtime) supplies its own.
  */
 export function createTextTrackSegmentLoaderActor<C extends Cue>(
   textTracksActor: TextTracksActor<C>,
   resolveSegment: TextTrackSegmentResolver<C>,
-  config: TextTrackSegmentLoaderActorConfig = {}
+  config: TextTrackSegmentLoaderActorConfig<C> = {},
+  // Composition deps threaded opaquely into each step's `TextStepDeps` (relocation
+  // reads composition state). The loader never reads them. Defaults empty for
+  // standalone / base-pipeline use.
+  compositionDeps: TextStepDeps = { state: {}, context: {}, config: {} }
 ): TextTrackSegmentLoaderActor {
   type UserState = Exclude<TextTrackSegmentLoaderActorState, 'destroyed'>;
   type Ctx = HandlerContext<UserState, TextTrackSegmentLoaderActorContext, () => SerialRunner>;
 
   const forwardBufferConfig: ForwardBufferConfig = { ...DEFAULT_FORWARD_BUFFER_CONFIG, ...config.forwardBuffer };
+  // Fold the loader's wiring into the passthrough `config` (see `textStepWiring`) so
+  // base steps read it from the uniform `{state,context,config}` — present in both
+  // composition and standalone use.
+  const deps: TextStepDeps = {
+    state: compositionDeps.state,
+    context: compositionDeps.context,
+    config: { ...compositionDeps.config, textTracksActor, resolveSegment },
+  };
+  // Built once per actor; default is `resolveCues → dispatchCues`.
+  const pipeline = (config.messagePipelines ?? DEFAULT_TEXT_MESSAGE_PIPELINES)();
 
   /**
-   * Translate a load message into an ordered TextLoadTask list based on
-   * committed actor state. In-flight awareness is handled separately in
-   * the `loading` state's load handler.
+   * Translate a load message into an ordered TextLoadTask list based on committed actor state. In-flight awareness is
+   * handled separately in the `loading` state's load handler.
    *
-   * Metadata mode (no `range`) is a no-op for text — text tracks have
-   * no init-segment concept, so there's nothing to load until a range
-   * arrives via `'full-range'` dispatch.
+   * Metadata mode (no `range`) is a no-op for text — text tracks have no init-segment concept, so there's nothing to
+   * load until a range arrives via `'full-range'` dispatch.
    */
   const planTasks = (message: TextTrackSegmentLoaderMessage): TextLoadTask[] => {
     const { track, range } = message;
     if (!range) return [];
+
     const trackId = track.id;
     // Peek (don't track) the snapshot: the loader's `send` is typically
     // invoked from inside the dispatcher's effect body, so a tracked
@@ -144,31 +139,32 @@ export function createTextTrackSegmentLoaderActor<C extends Cue>(
     // carries the dispatcher's intended window upper bound but doesn't
     // override the actor's planning.
     const segmentsToLoad = getSegmentsToLoad(track.segments, bufferedSegments, range.start, forwardBufferConfig);
+
     return segmentsToLoad.map((segment) => ({ segment, trackId }));
   };
 
   /**
-   * Wraps a TextLoadTask into a Task that fetches + dispatches `add-cues`.
-   * Updates `inFlightSegmentId` around the fetch so the load handler can
-   * make accurate continue/preempt decisions.
+   * Wraps a TextLoadTask into a Task that runs the op's step pipeline (resolve/relocate/dispatch, per the composition's
+   * `messagePipelines`). Updates `inFlightSegmentId` around the async region so the load handler can make accurate
+   * continue/preempt decisions, and checks the abort signal before each step.
+   *
+   * Text degrades gracefully: a step throwing (e.g. a failed segment fetch) is logged and swallowed so the runner
+   * continues to the next segment — unlike the v/a loader, where a failed init must abort the remaining tasks.
    */
   const makeLoadTask = (op: TextLoadTask, { getContext, setContext }: Ctx): Task<void> => {
     return new Task(async (signal) => {
       if (signal.aborted) return;
+
+      const frame: TextFrame<C> = { op };
+
       setContext({ ...getContext(), inFlightTrackId: op.trackId, inFlightSegmentId: op.segment.id });
+
       try {
-        const cues = await resolveSegment(op.segment.url);
-        if (signal.aborted) return;
-        textTracksActor.send({
-          type: 'add-cues',
-          meta: {
-            trackId: op.trackId,
-            id: op.segment.id,
-            startTime: op.segment.startTime,
-            duration: op.segment.duration,
-          },
-          cues,
-        });
+        for (const step of pipeline) {
+          if (signal.aborted) return;
+
+          await step(frame, signal, deps);
+        }
       } catch (error) {
         // Graceful degradation: log and continue to the next segment.
         console.error('Failed to load text-track segment:', error);
@@ -182,6 +178,7 @@ export function createTextTrackSegmentLoaderActor<C extends Cue>(
     for (const op of tasks) {
       ctx.runner.schedule(makeLoadTask(op, ctx)).then(undefined, (e: unknown) => {
         if (e instanceof Error && e.name === 'AbortError') return;
+
         console.error('Unexpected error in text-track segment loader:', e);
         ctx.runner.abortPending();
       });
@@ -203,6 +200,7 @@ export function createTextTrackSegmentLoaderActor<C extends Cue>(
           load: (msg, ctx) => {
             const tasks = planTasks(msg);
             if (tasks.length === 0) return;
+
             ctx.transition('loading');
             scheduleAll(tasks, ctx);
           },

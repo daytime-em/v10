@@ -1,16 +1,10 @@
-import { AlertDialogCloseElement } from '../../ui/alert-dialog/alert-dialog-close-element';
-import { AlertDialogDescriptionElement } from '../../ui/alert-dialog/alert-dialog-description-element';
-import { AlertDialogTitleElement } from '../../ui/alert-dialog/alert-dialog-title-element';
-import { ErrorDialogElement } from '../../ui/error-dialog/error-dialog-element';
-import { defineErrorDialog } from './compounds';
+import { safeDefine } from '../../registration/safe-define';
+import { ErrorDialogElement } from '../../ui/error-dialog/element';
 
-defineErrorDialog();
+safeDefine(ErrorDialogElement);
 
 declare global {
   interface HTMLElementTagNameMap {
     [ErrorDialogElement.tagName]: ErrorDialogElement;
-    [AlertDialogCloseElement.tagName]: AlertDialogCloseElement;
-    [AlertDialogDescriptionElement.tagName]: AlertDialogDescriptionElement;
-    [AlertDialogTitleElement.tagName]: AlertDialogTitleElement;
   }
 }

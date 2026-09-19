@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vite-plus/test';
 
 import {
   getIndicatorVisibilityCoordinator,
@@ -6,6 +6,7 @@ import {
   type MediaSnapshotStore,
   toInputActionEvent,
 } from '../input-action';
+import { isSliderFocused } from '../slider/focus';
 
 function mockStore(state: Record<string, unknown>): MediaSnapshotStore {
   return { state };
@@ -18,13 +19,14 @@ describe('input-action', () => {
         source: 'hotkey',
         action: 'togglePaused',
         value: 1,
-        event: new KeyboardEvent('keydown', { key: 'k' }),
+        event: new KeyboardEvent('keydown', { key: 'k', repeat: true }),
       })
     ).toEqual({
       source: 'hotkey',
       action: 'togglePaused',
       value: 1,
       key: 'k',
+      repeat: true,
     });
   });
 
@@ -36,24 +38,29 @@ describe('input-action', () => {
           paused: true,
           volume: 0.5,
           muted: false,
+          playbackRates: [1, 1.5],
+          playbackRate: 1.5,
           fullscreen: true,
           subtitlesShowing: true,
           textTrackList: [{ kind: 'captions', label: 'English', language: 'en', mode: 'showing' }],
           pip: false,
           currentTime: 30,
           duration: 120,
+          seeking: true,
         })
       )
     ).toEqual({
       paused: true,
       volume: 0.5,
       muted: false,
+      playbackRate: 1.5,
       fullscreen: true,
       subtitlesShowing: true,
       subtitlesAvailable: true,
       pip: false,
       currentTime: 30,
       duration: 120,
+      seeking: true,
     });
   });
 
@@ -63,6 +70,7 @@ describe('input-action', () => {
     const second = { close: vi.fn() };
 
     const coordinator = getIndicatorVisibilityCoordinator(container);
+
     coordinator.register(first);
     coordinator.register(second);
     coordinator.show(second);
@@ -70,5 +78,34 @@ describe('input-action', () => {
     expect(getIndicatorVisibilityCoordinator(container)).toBe(coordinator);
     expect(first.close).toHaveBeenCalledOnce();
     expect(second.close).not.toHaveBeenCalled();
+  });
+
+  it('detects focused sliders inside open shadow roots', () => {
+    const container = document.createElement('div');
+    const host = document.createElement('div');
+    const shadow = host.attachShadow({ mode: 'open' });
+    const slider = document.createElement('button');
+
+    slider.setAttribute('role', 'slider');
+    shadow.append(slider);
+    container.append(host);
+    document.body.append(container);
+
+    slider.focus();
+
+    expect(isSliderFocused(container)).toBe(true);
+  });
+
+  it('ignores focused sliders outside the scoped container', () => {
+    const container = document.createElement('div');
+    const slider = document.createElement('button');
+
+    slider.setAttribute('role', 'slider');
+    document.body.append(container, slider);
+
+    slider.focus();
+
+    expect(isSliderFocused(container)).toBe(false);
+    expect(isSliderFocused(document)).toBe(true);
   });
 });

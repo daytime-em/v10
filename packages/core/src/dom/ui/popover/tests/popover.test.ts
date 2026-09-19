@@ -1,7 +1,8 @@
 import { flush } from '@videojs/store';
-import { describe, expect, it, vi } from 'vitest';
-import { createPopupGroup } from '../popup-group';
-import { createTestPopover } from './popover-helpers';
+import { describe, expect, it, vi } from 'vite-plus/test';
+
+import { createPopupGroup } from '../group';
+import { createTestPopover } from './helpers';
 
 function nextFrame(): Promise<void> {
   return new Promise((resolve) => requestAnimationFrame(() => resolve()));
@@ -10,10 +11,70 @@ function nextFrame(): Promise<void> {
 describe('createPopover', () => {
   it('starts closed', () => {
     const { popover } = createTestPopover();
+
     expect(popover.input.current).toEqual({ active: false, status: 'idle' });
   });
 
   describe('open/close', () => {
+    it('can defer open changes until the owner commits them', () => {
+      const { popover, onOpenChange } = createTestPopover({ deferOpenChanges: true });
+
+      popover.open();
+
+      expect(onOpenChange).toHaveBeenCalledWith(true, { reason: 'click' });
+      expect(popover.input.current).toEqual({ active: false, status: 'idle' });
+
+      popover.syncOpen(true);
+
+      expect(popover.input.current).toEqual({ active: true, status: 'starting' });
+
+      popover.close();
+
+      expect(onOpenChange).toHaveBeenCalledWith(false, { reason: 'click' });
+      expect(popover.input.current).toEqual({ active: true, status: 'starting' });
+
+      popover.syncOpen(false);
+
+      expect(popover.input.current).toEqual({ active: true, status: 'ending' });
+    });
+
+    it('shows an already-mounted popup after a deferred open is committed', async () => {
+      const { popover } = createTestPopover({ deferOpenChanges: true });
+      const popup = document.createElement('div');
+      const showPopover = vi.fn();
+
+      Object.defineProperty(popup, 'showPopover', { value: showPopover });
+      popover.setPopupElement(popup);
+
+      popover.open();
+      expect(showPopover).not.toHaveBeenCalled();
+
+      popover.syncOpen(true);
+      expect(showPopover).not.toHaveBeenCalled();
+
+      await Promise.resolve();
+
+      expect(showPopover).toHaveBeenCalledOnce();
+    });
+
+    it('does not show a deferred popup that closes before the opening microtask', async () => {
+      const { popover } = createTestPopover({ deferOpenChanges: true });
+      const popup = document.createElement('div');
+      const showPopover = vi.fn();
+
+      Object.defineProperty(popup, 'showPopover', { value: showPopover });
+      popover.setPopupElement(popup);
+
+      popover.open();
+      popover.syncOpen(true);
+      popover.close();
+      popover.syncOpen(false);
+
+      await Promise.resolve();
+
+      expect(showPopover).not.toHaveBeenCalled();
+    });
+
     it('updates input state and calls onOpenChange when opening', () => {
       const { popover, onOpenChange } = createTestPopover();
 
@@ -144,14 +205,39 @@ describe('createPopover', () => {
   });
 
   describe('onOpenChangeComplete', () => {
-    it('fires after open animation completes', () => {
+    it('fires after open animation completes', async () => {
+      const onOpenChangeComplete = vi.fn();
+      const { popover } = createTestPopover({ onOpenChangeComplete });
+      const popup = document.createElement('div');
+      let finishAnimation!: () => void;
+      const finished = new Promise<void>((resolve) => {
+        finishAnimation = resolve;
+      });
+      const getAnimations = vi.fn(() => [{ finished }] as unknown as Animation[]);
+
+      Object.defineProperty(popup, 'getAnimations', { value: getAnimations });
+      popover.setPopupElement(popup);
+
+      popover.open();
+
+      await vi.waitFor(() => expect(getAnimations).toHaveBeenCalled());
+      expect(onOpenChangeComplete).not.toHaveBeenCalled();
+
+      finishAnimation();
+
+      await vi.waitFor(() => expect(onOpenChangeComplete).toHaveBeenCalledWith(true));
+    });
+
+    it('does not complete a close that is cancelled by reopening', async () => {
       const onOpenChangeComplete = vi.fn();
       const { popover } = createTestPopover({ onOpenChangeComplete });
 
       popover.open();
+      popover.close();
+      popover.open();
+      await Promise.resolve();
 
-      // Not called synchronously
-      expect(onOpenChangeComplete).not.toHaveBeenCalled();
+      expect(onOpenChangeComplete).not.toHaveBeenCalledWith(false);
     });
   });
 
@@ -169,6 +255,7 @@ describe('createPopover', () => {
     it('does not open on click when trigger is aria-disabled', () => {
       const { popover, onOpenChange } = createTestPopover();
       const trigger = document.createElement('button');
+
       trigger.setAttribute('aria-disabled', 'true');
       popover.setTriggerElement(trigger);
 
@@ -210,6 +297,7 @@ describe('createPopover', () => {
       const matchMedia = vi.fn(() => ({
         matches: false,
       }));
+
       vi.stubGlobal('matchMedia', matchMedia);
 
       const { popover, onOpenChange } = createTestPopover({
@@ -228,6 +316,7 @@ describe('createPopover', () => {
       const matchMedia = vi.fn(() => ({
         matches: false,
       }));
+
       vi.stubGlobal('matchMedia', matchMedia);
 
       const { popover, onOpenChange } = createTestPopover({
@@ -245,6 +334,7 @@ describe('createPopover', () => {
       const matchMedia = vi.fn((query: string) => ({
         matches: query === '(hover: hover)',
       }));
+
       vi.stubGlobal('matchMedia', matchMedia);
 
       const { popover, onOpenChange } = createTestPopover({
@@ -262,6 +352,7 @@ describe('createPopover', () => {
       const matchMedia = vi.fn((query: string) => ({
         matches: query === '(hover: hover)' || query === '(pointer: fine)',
       }));
+
       vi.stubGlobal('matchMedia', matchMedia);
 
       const { popover, onOpenChange } = createTestPopover({
@@ -301,6 +392,7 @@ describe('createPopover', () => {
       const { popover, onOpenChange } = createTestPopover();
       const popup = document.createElement('div');
       const child = document.createElement('button');
+
       popup.appendChild(child);
       document.body.appendChild(popup);
 
@@ -321,6 +413,7 @@ describe('createPopover', () => {
       const { popover, onOpenChange } = createTestPopover();
       const popup = document.createElement('div');
       const outside = document.createElement('div');
+
       document.body.appendChild(popup);
       document.body.appendChild(outside);
 
@@ -341,6 +434,7 @@ describe('createPopover', () => {
     it('does not close when clicking inside the trigger', () => {
       const { popover, onOpenChange } = createTestPopover();
       const trigger = document.createElement('button');
+
       document.body.appendChild(trigger);
 
       popover.setTriggerElement(trigger);
@@ -362,6 +456,7 @@ describe('createPopover', () => {
       const shadow = host.attachShadow({ mode: 'open' });
       const popup = document.createElement('div');
       const child = document.createElement('button');
+
       popup.appendChild(child);
       shadow.appendChild(popup);
       document.body.appendChild(host);
@@ -387,6 +482,7 @@ describe('createPopover', () => {
       const { popover, onOpenChange } = createTestPopover();
       const popup = document.createElement('div');
       const child = document.createElement('button');
+
       popup.appendChild(child);
       document.body.appendChild(popup);
 
@@ -411,6 +507,7 @@ describe('createPopover', () => {
     it('closes after focus settles outside the popover', async () => {
       const { popover, onOpenChange } = createTestPopover();
       const popup = document.createElement('div');
+
       document.body.appendChild(popup);
 
       popover.setPopupElement(popup);
@@ -430,6 +527,38 @@ describe('createPopover', () => {
 
       popover.destroy();
       popup.remove();
+    });
+
+    it('keeps the popover open when focus settles inside a Shadow DOM popup', async () => {
+      const { popover, onOpenChange } = createTestPopover();
+      const host = document.createElement('div');
+      const shadow = host.attachShadow({ mode: 'open' });
+      const popup = document.createElement('div');
+      const child = document.createElement('button');
+
+      popup.append(child);
+      shadow.append(popup);
+      document.body.append(host);
+      popover.setPopupElement(popup);
+      popover.open();
+      flush();
+      child.focus();
+      onOpenChange.mockClear();
+
+      popover.popupProps.onFocusOut({
+        relatedTarget: null,
+        preventDefault: vi.fn(),
+        stopPropagation: vi.fn(),
+      });
+      await nextFrame();
+      await nextFrame();
+
+      expect(document.activeElement).toBe(host);
+      expect(shadow.activeElement).toBe(child);
+      expect(onOpenChange).not.toHaveBeenCalledWith(false, expect.anything());
+
+      popover.destroy();
+      host.remove();
     });
   });
 

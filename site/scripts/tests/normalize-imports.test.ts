@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vite-plus/test';
+
 import { normalizeImports } from '../normalize-imports.js';
 
 describe('normalizeImports', () => {
@@ -88,6 +89,24 @@ describe('normalizeImports', () => {
     expect(normalizeImports(input)).toBe("import * as React from 'react';\n\nconst x = 1;");
   });
 
+  it('preserves directives before normalized imports', () => {
+    const input = [
+      "'use client';",
+      "import { Foo } from 'mod';",
+      "import { Bar } from 'mod';",
+      '',
+      'const x = 1;',
+    ].join('\n');
+
+    expect(normalizeImports(input)).toBe("'use client';\n\nimport { Foo, Bar } from 'mod';\n\nconst x = 1;");
+  });
+
+  it('preserves multiple directives without imports', () => {
+    const input = ["'use strict';", "'use client';", '', 'const x = 1;'].join('\n');
+
+    expect(normalizeImports(input)).toBe("'use strict';\n'use client';\n\nconst x = 1;");
+  });
+
   it('orders: side-effect, raw, then named imports', () => {
     const input = [
       "import { useState } from 'react';",
@@ -99,6 +118,7 @@ describe('normalizeImports', () => {
 
     const result = normalizeImports(input);
     const lines = result.split('\n');
+
     expect(lines[0]).toBe("import './styles.css';");
     expect(lines[1]).toBe("import React from 'react';");
     expect(lines[2]).toBe("import { useState } from 'react';");

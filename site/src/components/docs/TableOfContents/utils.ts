@@ -1,13 +1,52 @@
 import type { MarkdownHeading } from 'astro';
+import { navigate } from 'astro:transitions/client';
 import debounce from 'just-debounce-it';
 import throttle from 'just-throttle';
 import type { RefObject } from 'react';
 import { useEffect, useState } from 'react';
+
 import { API_REFERENCE_SUBSECTION_TITLES } from '@/utils/componentReferenceModel';
 
-/**
- * Find the first scrollable ancestor of an element
- */
+export interface RailGeometry {
+  stripeHeight: number;
+  gap: number;
+}
+
+const DEFAULT_ACTIVE_HEADING_OFFSET = 125;
+
+/** Resolve the viewport line where a heading becomes active from the document padding and target margin. */
+export function calculateActiveHeadingOffset(scrollPaddingTop: string, scrollMarginTop: string): number {
+  const scrollPadding = Number.parseFloat(scrollPaddingTop);
+  const scrollMargin = Number.parseFloat(scrollMarginTop);
+  const hasScrollPadding = !Number.isNaN(scrollPadding);
+  const hasScrollMargin = !Number.isNaN(scrollMargin);
+  if (!hasScrollPadding && !hasScrollMargin) return DEFAULT_ACTIVE_HEADING_OFFSET;
+
+  return (hasScrollPadding ? scrollPadding : 0) + (hasScrollMargin ? scrollMargin : 0);
+}
+
+/** Keep the full heading map visible by reducing gaps first, then stripe height. */
+export function calculateRailGeometry(headingCount: number, availableHeight: number): RailGeometry {
+  const stripeHeight = 1;
+  const gap = 4;
+
+  if (headingCount <= 1) {
+    return { stripeHeight, gap };
+  }
+
+  const desiredHeight = headingCount * stripeHeight + (headingCount - 1) * gap;
+  if (desiredHeight <= availableHeight) return { stripeHeight, gap };
+
+  const compressedGap = (availableHeight - headingCount * stripeHeight) / (headingCount - 1);
+  if (compressedGap >= 0) return { stripeHeight, gap: compressedGap };
+
+  return {
+    stripeHeight: Math.max(0, availableHeight / headingCount),
+    gap: 0,
+  };
+}
+
+/** Find the first scrollable ancestor of an element */
 export function getScrollParent(element: HTMLElement): HTMLElement {
   let current: HTMLElement | null = element;
 
@@ -21,14 +60,14 @@ export function getScrollParent(element: HTMLElement): HTMLElement {
         return current;
       }
     }
+
     current = current.parentElement;
   }
+
   return document.body;
 }
 
-/**
- * Check if an element is outside the visible bounds of its scroll container
- */
+/** Check if an element is outside the visible bounds of its scroll container */
 export function isElementOffscreen(element: HTMLElement, container: HTMLElement): boolean {
   const containerRect = container.getBoundingClientRect();
   const elementRect = element.getBoundingClientRect();
@@ -39,9 +78,7 @@ export function isElementOffscreen(element: HTMLElement, container: HTMLElement)
   return isAboveView || isBelowView;
 }
 
-/**
- * Include headings for docs TOC, including API-reference subsection H4s only.
- */
+/** Include headings for docs TOC, including API-reference subsection H4s only. */
 export function filterHeadingsForToc(headings: MarkdownHeading[]): MarkdownHeading[] {
   const apiReferenceSubsectionTitles = new Set(API_REFERENCE_SUBSECTION_TITLES);
   const isTocHeadingDepth = (depth: number): boolean => depth === 2 || depth === 3;
@@ -64,15 +101,11 @@ export function filterHeadingsForToc(headings: MarkdownHeading[]): MarkdownHeadi
   });
 }
 
-/**
- * Navigate to a heading by scrolling it into view and updating the URL
- */
+/** Navigate to a heading through Astro so its history index and scroll state stay intact. */
 export function navigateToHeading(slug: string): void {
   const element = document.getElementById(slug);
-  if (element) {
-    element.scrollIntoView({ behavior: 'smooth' });
-    window.history.pushState({}, '', `#${slug}`);
-  }
+
+  if (element) void navigate(`#${slug}`);
 }
 
 interface UseAutoScrollOptions {
@@ -80,9 +113,7 @@ interface UseAutoScrollOptions {
   containerRef: RefObject<HTMLElement | null>;
 }
 
-/**
- * Auto-scrolls the active link into view when it becomes active and is offscreen
- */
+/** Auto-scrolls the active link into view when it becomes active and is offscreen */
 export function useAutoScroll({ activeId, containerRef }: UseAutoScrollOptions) {
   useEffect(() => {
     if (!activeId || !containerRef.current) return;
@@ -102,36 +133,27 @@ export function useAutoScroll({ activeId, containerRef }: UseAutoScrollOptions) 
   }, [activeId, containerRef]);
 }
 
-/**
- * Tracks which heading is currently active based on scroll position
- */
+/** Tracks which heading is currently active based on scroll position */
 export function useActiveHeading(headings: MarkdownHeading[]): string {
   const [activeId, setActiveId] = useState<string>('');
 
   useEffect(() => {
     const handleScroll = () => {
-      // globals.css SHOULD define a scroll-margin-top for headings
-      // let's get the value of that, here
-      let scrollOffset = 125; // idk, a sensible default
       const idElement = document.querySelector('main [id]');
-      if (idElement) {
-        const computedStyle = getComputedStyle(idElement);
-        const scrollMarginTop = computedStyle.scrollMarginTop;
-        if (scrollMarginTop) {
-          const parsed = Number.parseFloat(scrollMarginTop);
-          if (!Number.isNaN(parsed)) scrollOffset = parsed;
-        }
-      }
-      scrollOffset = scrollOffset + 1;
-      const scrollPosition = window.scrollY + scrollOffset;
+      const scrollPaddingTop = getComputedStyle(document.documentElement).scrollPaddingTop;
+      const scrollMarginTop = idElement ? getComputedStyle(idElement).scrollMarginTop : '';
+      const activeLine = calculateActiveHeadingOffset(scrollPaddingTop, scrollMarginTop) + 1;
 
       // Find the last heading that's above the scroll position
       let currentActiveId = '';
+
       for (const heading of headings) {
         const element = document.getElementById(heading.slug);
+
         if (element) {
-          const elementTop = element.offsetTop;
-          if (elementTop <= scrollPosition) {
+          const elementTop = element.getBoundingClientRect().top;
+
+          if (elementTop <= activeLine) {
             currentActiveId = heading.slug;
           } else {
             break;

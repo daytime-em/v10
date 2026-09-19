@@ -1,13 +1,9 @@
-'use client';
-
-import type { Media } from '@videojs/core';
-import type { MediaContainer, PopupGroup } from '@videojs/core/dom';
+import type { MediaContainer } from '@videojs/core/dom';
+import type { Media } from '@videojs/media';
 import type { UnknownState, UnknownStore } from '@videojs/store';
 import { useStore } from '@videojs/store/react';
-import type { Dispatch, HTMLAttributes, ReactNode, PointerEvent as ReactPointerEvent, SetStateAction } from 'react';
-import { createContext, forwardRef, useContext, useEffect, useRef } from 'react';
-
-import { useComposedRefs } from '../utils/use-composed-refs';
+import type { Dispatch, ReactNode, SetStateAction } from 'react';
+import { createContext, useContext } from 'react';
 
 export interface PlayerContextValue {
   store: UnknownStore;
@@ -15,7 +11,6 @@ export interface PlayerContextValue {
   setMedia: Dispatch<SetStateAction<Media | null>>;
   container: MediaContainer | null;
   setContainer: Dispatch<SetStateAction<HTMLElement | null>>;
-  popupGroup?: PopupGroup;
 }
 
 const PlayerContext = createContext<PlayerContextValue | null>(null);
@@ -35,20 +30,20 @@ export function PlayerContextProvider({
   return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>;
 }
 
-/** Access the full player context value. Throws if used outside a Player Provider. */
+/** Access the full player context value. Throws if used outside a Player. */
 export function usePlayerContext(): PlayerContextValue {
   const ctx = useContext(PlayerContext);
-  if (!ctx) throw new Error('usePlayerContext must be used within a Player Provider');
+  if (!ctx) throw new Error('usePlayerContext must be used within a Player');
+
   return ctx;
 }
 
 /**
- * Access the player store from within a Player Provider.
+ * Access the player store from within a Player.
  *
- * This standalone hook has no knowledge of your configured features, so it
- * returns an untyped `UnknownStore` whose state properties are typed as
- * `unknown`. For typed access, use the `usePlayer` returned by `createPlayer()`,
- * or pass a premade selector to recover the type from its return value.
+ * This standalone hook has no knowledge of your configured features, so it returns an untyped `UnknownStore` whose
+ * state properties are typed as `unknown`. For typed access, use the `usePlayer` returned by `createPlayer()`, or pass
+ * a premade selector to recover the type from its return value.
  *
  * @label Without Selector
  */
@@ -56,105 +51,71 @@ export function usePlayer(): UnknownStore;
 /**
  * Select a value from the player store. Re-renders when the selected value changes.
  *
- * The selector receives `UnknownState`, so an inline selector returns `unknown`.
- * Pass a premade selector (e.g. `selectPlayback`) to get a typed result.
+ * The selector receives `UnknownState`, so an inline selector returns `unknown`. Pass a premade selector (e.g.
+ * `selectPlayback`) to get a typed result.
  *
- * @label With Selector
  * @param selector - Derives a value from the player store state.
+ * @label With Selector
  */
 export function usePlayer<R>(selector: (state: UnknownState) => R): R;
 export function usePlayer<R>(selector?: (state: UnknownState) => R) {
   const { store } = usePlayerContext();
+
   return useStore(store, selector as any);
 }
 
 /**
- * Access player state when available, but return `undefined` outside Provider.
+ * Returns the player store when available, or `undefined` outside a Player.
  *
- * This is useful for components that can operate without player context
- * (e.g. they accept fully explicit props as a fallback).
+ * @label Without Selector
  */
-/** @label Without Selector */
 export function useOptionalPlayer(): UnknownStore | undefined;
-/** @label With Selector */
+/**
+ * Selects a player value when available, or returns `undefined` outside a Player.
+ *
+ * @param selector - Derives a value from the player store state.
+ * @label With Selector
+ */
 export function useOptionalPlayer<R>(selector: (state: UnknownState) => R): R | undefined;
 export function useOptionalPlayer<R>(selector?: (state: UnknownState) => R) {
   const ctx = useContext(PlayerContext);
   const store = (ctx?.store ?? (EMPTY_STORE as unknown as UnknownStore)) as UnknownStore;
   const value = useStore(store, (ctx ? selector : undefined) as any);
+
   return ctx ? value : undefined;
 }
 
-/** Access the media element from within a Player Provider. */
+/** Access the media element from within a Player. */
 export function useMedia(): Media | null {
   const { media } = usePlayerContext();
+
   return media;
 }
 
-/** Access the container element from within a Player Provider. */
+/** Access the container element from within a Player. */
 export function useContainer(): MediaContainer | null {
   const { container } = usePlayerContext();
+
   return container;
 }
 
-/** Access the container element when a Player Provider is available. */
+/** Access the container element when a Player is available. */
 export function useOptionalContainer(): MediaContainer | null {
   const ctx = useContext(PlayerContext);
-  return ctx?.container ?? null;
-}
 
-/** Access the interactive popup group when a Player Provider is available. */
-export function useOptionalPopupGroup(): PopupGroup | undefined {
-  const ctx = useContext(PlayerContext);
-  return ctx?.popupGroup;
+  return ctx?.container ?? null;
 }
 
 /** Access the media attach setter for connecting a media element to the player. */
 export function useMediaAttach(): Dispatch<SetStateAction<Media | null>> | undefined {
   const ctx = useContext(PlayerContext);
+
   return ctx?.setMedia;
 }
 
 /** Access the container attach setter for connecting a container element to the player. */
 export function useContainerAttach(): Dispatch<SetStateAction<HTMLElement | null>> | undefined {
   const ctx = useContext(PlayerContext);
+
   return ctx?.setContainer;
-}
-
-export interface ContainerProps extends HTMLAttributes<HTMLDivElement> {
-  children?: ReactNode;
-}
-
-export const Container = forwardRef<HTMLDivElement, ContainerProps>(function Container(
-  { children, tabIndex = 0, ...props },
-  ref
-) {
-  const setContainer = useContainerAttach();
-  const internalRef = useRef<HTMLDivElement>(null);
-  const composedRef = useComposedRefs(ref, internalRef);
-
-  useEffect(() => {
-    setContainer?.(internalRef.current);
-    return () => setContainer?.(null);
-  }, [setContainer]);
-
-  const handlePointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
-    props.onPointerUp?.(event);
-    const el = internalRef.current;
-    if (!el) return;
-    // If nothing inside has focus, grab it so keyboard events reach hotkey listeners.
-    if (!el.contains(document.activeElement) || document.activeElement === document.body) {
-      el.focus({ preventScroll: true });
-    }
-  };
-
-  return (
-    <div ref={composedRef} tabIndex={tabIndex} {...props} onPointerUp={handlePointerUp}>
-      {children}
-    </div>
-  );
-});
-
-export namespace Container {
-  export type Props = ContainerProps;
 }

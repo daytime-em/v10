@@ -1,5 +1,3 @@
-import { actions } from 'astro:actions';
-
 import MuxUploader, {
   MuxUploaderDrop,
   MuxUploaderFileSelect,
@@ -7,12 +5,17 @@ import MuxUploader, {
   MuxUploaderRetry,
   MuxUploaderStatus,
 } from '@mux/mux-uploader-react';
+import { actions } from 'astro:actions';
 import { useCallback, useRef, useState } from 'react';
+
+import CloudUpload from '@/assets/icons/cloud-upload.svg?react';
+import MuxLogo from '@/assets/logos/mux-small.svg?react';
+import { MUX_URL } from '@/consts';
 import { muxPlaybackId, renderer, sourceUrl } from '@/stores/installation';
 import { initiateAuthPopup } from '@/utils/mux/auth-flow';
 import { pollForPlaybackId } from '@/utils/mux/polling';
-import type { UploaderState } from './UploaderOverlay';
 
+import type { UploaderState } from './UploaderOverlay';
 import UploaderOverlay from './UploaderOverlay';
 
 // import './MuxUploaderPanel.module.css';
@@ -20,13 +23,9 @@ import UploaderOverlay from './UploaderOverlay';
 /**
  * Mux video uploader with auth-gated flow.
  *
- * Flow:
- * 1. User drops/selects file → endpoint() called
- * 2. Try to create upload URL (requires auth)
- * 3. If 401: show login overlay, wait for auth, retry
- * 4. Upload begins with returned URL
- * 5. On success: poll for playback ID
- * 6. When ready: update renderer to 'hls', store playback ID in nanostore
+ * Flow: 1. User drops/selects file → endpoint() called 2. Try to create upload URL (requires auth) 3. If 401: show
+ * login overlay, wait for auth, retry 4. Upload begins with returned URL 5. On success: poll for playback ID 6. When
+ * ready: update renderer to 'hls', store playback ID in nanostore
  */
 export default function MuxUploaderPanel() {
   // Local state for upload flow (not shared across islands)
@@ -42,8 +41,7 @@ export default function MuxUploaderPanel() {
   const uploaderRef = useRef<HTMLElement>(null);
 
   /**
-   * Endpoint function called by MuxUploader when file is selected.
-   * Returns a Promise that resolves with the upload URL.
+   * Endpoint function called by MuxUploader when file is selected. Returns a Promise that resolves with the upload URL.
    * The upload waits for this Promise before starting.
    */
   const getEndpoint = useCallback(async (): Promise<string> => {
@@ -73,12 +71,10 @@ export default function MuxUploaderPanel() {
     return result.data.uploadUrl;
   }, []);
 
-  /**
-   * Handles OAuth login via popup.
-   * On success: fetches upload URL and resolves the pending Promise.
-   */
+  /** Handles OAuth login via popup. On success: fetches upload URL and resolves the pending Promise. */
   const handleLogin = useCallback(async () => {
     const result = await actions.auth.initiateLogin();
+
     if (result.error) {
       setError(result.error.message);
       setState('polling_error');
@@ -111,10 +107,7 @@ export default function MuxUploaderPanel() {
     });
   }, []);
 
-  /**
-   * Polls Mux API for playback ID after upload completes.
-   * Updates renderer to 'mux' and stores playback ID on success.
-   */
+  /** Polls Mux API for playback ID after upload completes. Updates renderer to 'mux' and stores playback ID on success. */
   const handleUploadSuccess = useCallback(async () => {
     if (!uploadId) return;
 
@@ -124,9 +117,8 @@ export default function MuxUploaderPanel() {
       uploadId,
       getUploadStatus: async (id) => {
         const response = await actions.mux.getUploadStatus({ uploadId: id });
-        if (response.error) {
-          return { error: { message: response.error.message } };
-        }
+        if (response.error) return { error: { message: response.error.message } };
+
         return {
           data: {
             status: response.data.status as 'waiting' | 'asset_created' | 'errored' | 'cancelled' | 'timed_out',
@@ -136,9 +128,8 @@ export default function MuxUploaderPanel() {
       },
       getAssetStatus: async (assetId) => {
         const response = await actions.mux.getAssetStatus({ assetId });
-        if (response.error) {
-          return { error: { message: response.error.message } };
-        }
+        if (response.error) return { error: { message: response.error.message } };
+
         return {
           data: {
             status: response.data.status as 'preparing' | 'ready' | 'errored',
@@ -175,7 +166,7 @@ export default function MuxUploaderPanel() {
   }, []);
 
   return (
-    <div className="flex-1 relative rounded-xs border border-dashed border-light-40 overflow-hidden border-faded-black dark:border-manila-dark">
+    <div className="corner-squircle border-line-strong bg-surface relative isolate w-full overflow-hidden rounded-xl border border-dashed">
       <MuxUploader
         // @ts-expect-error — MuxUploaderElement type not hoisted by pnpm; only used for dispatchEvent
         ref={uploaderRef}
@@ -191,27 +182,47 @@ export default function MuxUploaderPanel() {
       {/* Custom Mux Uploader UI */}
       <MuxUploaderDrop
         muxUploader="mux-uploader"
-        className="w-full h-full flex flex-col items-center justify-center p-4"
+        className="flex w-full flex-col items-center justify-center gap-4 px-6 py-10 text-center"
         overlay
         overlayText="Let it go"
       >
-        <span slot="heading" className="text-p3 font-bold mb-2">
-          Drop a video
+        <span slot="heading" className="flex flex-col items-center gap-4">
+          <span className="corner-squircle border-accent/25 bg-accent/10 text-accent flex size-14 items-center justify-center rounded-2xl border">
+            <CloudUpload className="size-6" aria-hidden="true" />
+          </span>
+          <span className="flex flex-col gap-1">
+            <span className="text-p15 font-semibold text-balance">Drop a video to host it for free on Mux</span>
+            <span className="text-p3 dark:text-muted text-balance">
+              We transcode it into an HLS stream and set it as your source above.
+            </span>
+          </span>
         </span>
-        <span slot="separator" className="text-p3 block mb-3">
-          — or —
+        <span slot="separator" className="sr-only">
+          or
         </span>
         <MuxUploaderFileSelect muxUploader="mux-uploader">
           <button
             type="button"
-            className="cursor-pointer inline-flex items-center gap-2 px-4 py-2 bg-faded-black text-manila-light dark:bg-manila-light dark:text-faded-black rounded-xs text-p3 font-bold intent:bg-orange intent:text-faded-black"
+            className="bg-faded-black text-manila-light dark:bg-manila-light dark:text-faded-black text-p3 intent:bg-accent intent:text-faded-black corner-squircle inline-flex h-10 cursor-pointer items-center gap-2 rounded-lg px-5 font-semibold shadow-sm transition select-none"
           >
             Select a file
           </button>
         </MuxUploaderFileSelect>
-        <MuxUploaderStatus muxUploader="mux-uploader" />
-        <MuxUploaderRetry muxUploader="mux-uploader" />
-        <MuxUploaderProgress type="percentage" muxUploader="mux-uploader" />
+        <MuxUploaderStatus muxUploader="mux-uploader" className="text-p3" />
+        <MuxUploaderRetry muxUploader="mux-uploader" className="text-p3" />
+        <MuxUploaderProgress type="percentage" muxUploader="mux-uploader" className="text-p3 font-mono" />
+        <span className="text-p4 dark:text-muted mt-2 inline-flex items-center gap-1.5">
+          Powered by{' '}
+          <a
+            href={MUX_URL}
+            target="_blank"
+            rel="noopener"
+            aria-label="Mux"
+            className="text-faded-black intent:text-accent dark:text-manila-light"
+          >
+            <MuxLogo className="h-3.5 w-auto" />
+          </a>
+        </span>
       </MuxUploaderDrop>
 
       {/* TODO add a pre-hydration loading state */}

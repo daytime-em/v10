@@ -1,8 +1,20 @@
-import type { AudioPlayerStore, PlayerStore, PlayerTarget, VideoPlayerStore } from '@videojs/core/dom';
-import { audioFeatures, backgroundFeatures, definePlayerFeature, features, videoFeatures } from '@videojs/core/dom';
+import {
+  type AudioPlayerStore,
+  audioFeatures,
+  backgroundFeatures,
+  definePlayerFeature,
+  features,
+  metadataFeature,
+  type PlayerStore,
+  type PlayerTarget,
+  type ScreenOrientationLockType,
+  type VideoPlayerStore,
+  videoFeatures,
+} from '@videojs/core/dom';
 import type { Slice } from '@videojs/store';
-import { assertType, describe, it } from 'vitest';
+import { assertType, describe, it } from 'vite-plus/test';
 
+import type { UIElement } from '../../ui/ui-element';
 import { type CreatePlayerResult, createPlayer } from '../create-player';
 
 describe('createPlayer', () => {
@@ -10,6 +22,14 @@ describe('createPlayer', () => {
     const result = createPlayer({ features: videoFeatures });
 
     assertType<CreatePlayerResult<VideoPlayerStore>>(result);
+    // @ts-expect-error ContainerMixin is no longer part of the HTML API.
+    result.ContainerMixin;
+    // @ts-expect-error createPlayer returns a PlayerElement class directly.
+    result.ProviderMixin;
+    // @ts-expect-error Use playerContext.
+    result.context;
+    // @ts-expect-error The player element owns its store.
+    result.create;
   });
 
   it('resolves audio features to AudioPlayerStore', () => {
@@ -17,7 +37,7 @@ describe('createPlayer', () => {
 
     assertType<CreatePlayerResult<AudioPlayerStore>>(result);
 
-    const store = result.create();
+    const store = new result.PlayerElement().store;
 
     assertType<number | undefined>(store.error?.code);
     assertType<string | undefined>(store.error?.message);
@@ -44,14 +64,40 @@ describe('createPlayer', () => {
     assertType<CreatePlayerResult<PlayerStore<[Slice<PlayerTarget, CustomState>]>>>(result);
   });
 
-  it('accepts the orientation lock feature alias with and without config', () => {
-    const configuredOrientationLock = features.orientationLock({ type: 'portrait' });
+  it('infers config properties from selected features', () => {
+    const withMetadata = createPlayer({ features: [metadataFeature] });
+    const withoutMetadata = createPlayer({ features: [features.playback] });
+    const metadataPlayer = new withMetadata.PlayerElement();
+    const plainPlayer = new withoutMetadata.PlayerElement();
 
-    const defaultResult = createPlayer({ features: [features.orientationLock] });
-    const configuredResult = createPlayer({ features: [configuredOrientationLock] });
+    // The store calls this `title`; on an element that name is the tooltip.
+    assertType<string | null | undefined>(metadataPlayer.contentTitle);
 
-    assertType<CreatePlayerResult<PlayerStore<[typeof features.orientationLock]>>>(defaultResult);
-    assertType<CreatePlayerResult<PlayerStore<[typeof configuredOrientationLock]>>>(configuredResult);
+    // @ts-expect-error metadata properties are absent when the feature is absent.
+    plainPlayer.contentTitle;
+  });
+
+  it('returns a controller already bound to the player context', () => {
+    const { PlayerController } = createPlayer({ features: videoFeatures });
+    const host = null as unknown as UIElement;
+
+    assertType<import('../controller').PlayerController<VideoPlayerStore>>(new PlayerController(host));
+    assertType<import('../controller').PlayerController<VideoPlayerStore, boolean>>(
+      new PlayerController(host, (state) => state.paused)
+    );
+  });
+
+  it('exposes orientation lock configuration as a player property', () => {
+    const withOrientationLock = createPlayer({ features: [features.orientationLock] });
+    const withoutOrientationLock = createPlayer({ features: [features.playback] });
+    const orientationPlayer = new withOrientationLock.PlayerElement();
+    const plainPlayer = new withoutOrientationLock.PlayerElement();
+
+    assertType<CreatePlayerResult<PlayerStore<[typeof features.orientationLock]>>>(withOrientationLock);
+    assertType<ScreenOrientationLockType | null | undefined>(orientationPlayer.orientationLockType);
+
+    // @ts-expect-error orientation lock properties are absent when the feature is absent.
+    plainPlayer.orientationLockType;
   });
 
   it('resolves extended video features to generic PlayerStore', () => {
@@ -71,7 +117,7 @@ describe('createPlayer', () => {
     assertType<CreatePlayerResult<PlayerStore<[...typeof videoFeatures, typeof analyticsFeature]>>>(result);
 
     // The store has both video and analytics state
-    const store = result.create();
+    const store = new result.PlayerElement().store;
 
     assertType<boolean>(store.paused);
     assertType<number>(store.volume);
@@ -97,7 +143,7 @@ describe('createPlayer', () => {
       features: [...audioFeatures, analyticsFeature],
     });
 
-    const store = result.create();
+    const store = new result.PlayerElement().store;
 
     assertType<boolean>(store.paused);
     assertType<number>(store.volume);

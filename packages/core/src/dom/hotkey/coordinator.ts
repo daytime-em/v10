@@ -1,6 +1,7 @@
 import { isEditableTarget, isInteractiveActivation, listen } from '@videojs/utils/dom';
 import { isUndefined } from '@videojs/utils/predicate';
 
+import { isInteractionLocked } from '../ui/interaction-lock';
 import { toAriaKeyShortcut, toDisplayKeyShortcut } from './aria';
 import type { HotkeyOptions, ParsedHotkeyBinding } from './hotkey';
 import { matchesHotkeyEvent, parseHotkeyPattern } from './hotkey';
@@ -65,11 +66,14 @@ export class HotkeyCoordinator {
     this.#notify();
 
     let removed = false;
+
     return () => {
       if (removed) return;
+
       removed = true;
 
       const idx = this.#bindings.indexOf(binding);
+
       if (idx !== -1) this.#bindings.splice(idx, 1);
 
       this.#maybeDisconnect();
@@ -96,6 +100,7 @@ export class HotkeyCoordinator {
 
   destroy(): void {
     if (this.#destroyed) return;
+
     this.#destroyed = true;
     this.#disconnect?.abort();
     this.#disconnect = null;
@@ -114,6 +119,7 @@ export class HotkeyCoordinator {
       // Higher specificity (more modifiers) first.
       const specDiff = b.parsed[0]!.modifiers.size - a.parsed[0]!.modifiers.size;
       if (specDiff !== 0) return specDiff;
+
       // Then registration order.
       return a.id - b.id;
     });
@@ -121,12 +127,14 @@ export class HotkeyCoordinator {
 
   #connect(): void {
     if (this.#disconnect) return;
+
     this.#disconnect = new AbortController();
     listen(this.#target, 'keydown', this.#handleEvent, { signal: this.#disconnect.signal });
   }
 
   #connectDocument(): void {
     if (this.#docDisconnect) return;
+
     this.#docDisconnect = new AbortController();
     listen(document, 'keydown', this.#handleEvent, { signal: this.#docDisconnect.signal });
   }
@@ -147,6 +155,8 @@ export class HotkeyCoordinator {
   }
 
   #handleEvent = (event: KeyboardEvent): void => {
+    if (isInteractionLocked(this.#target)) return;
+
     // IME composition filtering.
     if (event.key === 'Unidentified') return;
 
@@ -159,8 +169,8 @@ export class HotkeyCoordinator {
 
     for (const binding of this.#bindings) {
       const { options, parsed } = binding;
-
       if (options.disabled) continue;
+
       if (event.repeat && options.repeatable === false) continue;
 
       // Only consider bindings matching the event's target scope.
@@ -181,6 +191,7 @@ export class HotkeyCoordinator {
             value: options.value,
             event,
           };
+
           for (const cb of this.#activationSubscribers) {
             try {
               cb(activateEvent);
@@ -189,6 +200,7 @@ export class HotkeyCoordinator {
             }
           }
         }
+
         event.preventDefault();
         options.onActivate(event, p.originalKey);
         return;
@@ -200,8 +212,11 @@ export class HotkeyCoordinator {
     return this.#bindings
       .filter((binding) => {
         if (binding.options.disabled) return false;
+
         if (binding.options.action !== action) return false;
+
         if (isUndefined(value)) return true;
+
         return binding.options.value === value;
       })
       .sort((a, b) => a.id - b.id);
@@ -209,6 +224,7 @@ export class HotkeyCoordinator {
 
   #formatDisplayShortcut(binding: HotkeyBinding): string {
     if (binding.options.keys === '0-9') return binding.options.keys;
+
     return toDisplayKeyShortcut(binding.parsed[0]!);
   }
 

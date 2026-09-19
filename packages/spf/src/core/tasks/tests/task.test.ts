@@ -1,5 +1,6 @@
-import { describe, expect, it, vi } from 'vitest';
-import { ConcurrentRunner, SerialRunner, Task } from '../task';
+import { describe, expect, it, vi } from 'vite-plus/test';
+
+import { ConcurrentRunner, RecurringRunner, type Reschedule, runOnce, SerialRunner, Task } from '../task';
 
 // =============================================================================
 // Task
@@ -9,6 +10,7 @@ describe('Task', () => {
   describe('status lifecycle', () => {
     it('starts in pending status', () => {
       const task = new Task(async () => {});
+
       expect(task.status).toBe('pending');
     });
 
@@ -26,6 +28,7 @@ describe('Task', () => {
 
     it('transitions to done when run() resolves', async () => {
       const task = new Task(async () => 42);
+
       await task.run();
       expect(task.status).toBe('done');
     });
@@ -34,6 +37,7 @@ describe('Task', () => {
       const task = new Task<void, Error>(async () => {
         throw new Error('boom');
       });
+
       await expect(task.run()).rejects.toThrow('boom');
       expect(task.status).toBe('error');
     });
@@ -43,6 +47,7 @@ describe('Task', () => {
     it('returns value from run() promise', async () => {
       const task = new Task(async () => 'hello');
       const result = await task.run();
+
       expect(result).toBe('hello');
     });
 
@@ -51,6 +56,7 @@ describe('Task', () => {
       // After run() resolves, both are correct — the guarantee is structural
       // (sequential assignment with no async gap between the two writes).
       const task = new Task(async () => 99);
+
       await task.run();
       expect(task.value).toBe(99);
       expect(task.status).toBe('done');
@@ -61,6 +67,7 @@ describe('Task', () => {
       const task = new Task<void, Error>(async () => {
         throw err;
       });
+
       await expect(task.run()).rejects.toThrow('fail');
       expect(task.error).toBe(err);
       expect(task.status).toBe('error');
@@ -68,16 +75,19 @@ describe('Task', () => {
 
     it('value is undefined before completion', () => {
       const task = new Task(async () => 42);
+
       expect(task.value).toBeUndefined();
     });
 
     it('error is undefined before failure', () => {
       const task = new Task(async () => {});
+
       expect(task.error).toBeUndefined();
     });
 
     it('value is undefined for Task<void>', async () => {
       const task = new Task(async () => {});
+
       await task.run();
       expect(task.value).toBeUndefined();
     });
@@ -105,6 +115,7 @@ describe('Task', () => {
       });
 
       const runPromise = task.run();
+
       task.abort();
       await runPromise;
 
@@ -124,6 +135,7 @@ describe('Task', () => {
       );
 
       const runPromise = task.run();
+
       external.abort();
       await runPromise;
 
@@ -143,6 +155,7 @@ describe('Task', () => {
       );
 
       const runPromise = task.run();
+
       task.abort();
       await runPromise;
 
@@ -153,12 +166,14 @@ describe('Task', () => {
   describe('id', () => {
     it('uses provided string id', () => {
       const task = new Task(async () => {}, { id: 'my-task' });
+
       expect(task.id).toBe('my-task');
     });
 
     it('calls provided function id once at construction', () => {
       const idFn = vi.fn(() => 'fn-task-id');
       const task = new Task(async () => {}, { id: idFn });
+
       expect(task.id).toBe('fn-task-id');
       expect(idFn).toHaveBeenCalledTimes(1);
     });
@@ -166,8 +181,104 @@ describe('Task', () => {
     it('generates a unique id when none provided', () => {
       const t1 = new Task(async () => {});
       const t2 = new Task(async () => {});
+
       expect(typeof t1.id).toBe('string');
       expect(t1.id).not.toBe(t2.id);
+    });
+  });
+
+  describe('memoization', () => {
+    it('runs the work at most once and shares the result across run() calls', async () => {
+      const work = vi.fn(async () => 42);
+      const task = new Task(work);
+
+      const [a, b] = await Promise.all([task.run(), task.run()]);
+      const c = await task.run(); // after settle
+
+      expect(work).toHaveBeenCalledTimes(1);
+      expect([a, b, c]).toEqual([42, 42, 42]);
+    });
+
+    it('shares the rejection across run() calls', async () => {
+      const err = new Error('boom');
+      const work = vi.fn(async () => {
+        throw err;
+      });
+      const task = new Task<void, Error>(work);
+
+      await expect(task.run()).rejects.toBe(err);
+      await expect(task.run()).rejects.toBe(err);
+      expect(work).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('clone', () => {
+    it('produces a fresh, pending task with the same id and work', async () => {
+      let runs = 0;
+      const original = new Task<number>(async () => ++runs, { id: 'x' });
+
+      await original.run();
+
+      const cloned = original.clone();
+
+      expect(cloned).not.toBe(original);
+      expect(cloned.id).toBe('x');
+      expect(cloned.status).toBe('pending');
+
+      // The clone re-executes the same work (a fresh memoization).
+      await expect(cloned.run()).resolves.toBe(2);
+      expect(runs).toBe(2);
+    });
+
+    it('gives the clone an independent abort scope', async () => {
+      const signals: AbortSignal[] = [];
+      const original = new Task(async (signal) => {
+        signals.push(signal);
+        await new Promise<void>((resolve) => setTimeout(resolve, 10));
+      });
+
+      const cloned = original.clone();
+      const run = cloned.run();
+
+      cloned.abort();
+      await run;
+
+      // Aborting the clone aborts only the clone's signal, not the original's.
+      original.abort();
+      expect(signals).toHaveLength(1);
+      expect(signals[0]?.aborted).toBe(true);
+    });
+
+    it('carries the run value forward as the clone’s `previous`', async () => {
+      const original = new Task<number>(async () => 1, { id: 'x' });
+
+      expect(original.previous).toBeUndefined();
+      await original.run();
+
+      const cloned = original.clone();
+
+      expect(cloned.previous).toBe(1);
+    });
+
+    it('preserves the last successful `previous` across an errored cycle', async () => {
+      let n = 0;
+      // Cycle 1 → 1, cycle 2 → throws, cycle 3 → 3.
+      const run = async () => {
+        n += 1;
+
+        if (n === 2) throw new Error('boom');
+
+        return n;
+      };
+      const c1 = new Task<number>(run, { id: 'x' });
+
+      await c1.run();
+      const c2 = c1.clone(); // previous = 1
+
+      await c2.run().catch(() => {});
+      const c3 = c2.clone(); // errored cycle keeps previous = 1
+
+      expect(c3.previous).toBe(1);
     });
   });
 });
@@ -422,6 +533,7 @@ describe('SerialRunner', () => {
     const runner = new SerialRunner();
     const task = new Task(async () => 'result');
     const value = await runner.schedule(task);
+
     expect(value).toBe('result');
   });
 
@@ -430,6 +542,7 @@ describe('SerialRunner', () => {
     const task = new Task(async () => {
       throw new Error('task failed');
     });
+
     await expect(runner.schedule(task)).rejects.toThrow('task failed');
   });
 
@@ -571,5 +684,193 @@ describe('SerialRunner', () => {
     runner.abortAll();
 
     expect(taskSignal?.aborted).toBe(true);
+  });
+});
+
+describe('RecurringRunner', () => {
+  /**
+   * A reschedule that parks forever, rejecting only when its signal aborts — so a recurrence stays "live" (awaiting)
+   * until superseded or aborted.
+   */
+  const parkUntilAborted: Reschedule<number> = (task) =>
+    new Promise<boolean>((_resolve, reject) => {
+      task.signal.addEventListener('abort', () => reject(task.signal.reason), { once: true });
+    });
+
+  /** Flush pending macrotasks so "did NOT happen" assertions are meaningful. */
+  const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  it('runs the task exactly once with the runOnce reschedule', async () => {
+    let runs = 0;
+    const task = new Task<number>(async () => ++runs, { id: 'x' });
+    const runner = new RecurringRunner<number>(runOnce);
+
+    runner.schedule(task);
+    await vi.waitFor(() => expect(runs).toBe(1));
+
+    await flush();
+    expect(runs).toBe(1);
+  });
+
+  it('re-runs (a clone of) the task while reschedule resolves true, stops on false', async () => {
+    let runs = 0;
+    // The runner clones per cycle; the clones share this run fn's `runs` counter.
+    const task = new Task<number>(async () => ++runs, { id: 'x' });
+    const runner = new RecurringRunner<number>(async (t) => (await t.run()) < 3); // continue while < 3
+
+    runner.schedule(task);
+    await vi.waitFor(() => expect(runs).toBe(3));
+
+    await flush();
+    expect(runs).toBe(3);
+  });
+
+  it('observes the run and receives the previous successful value', async () => {
+    let n = 0;
+    const task = new Task<number>(async () => ++n, { id: 'x' });
+    const seen: Array<[number, number | undefined]> = [];
+    const runner = new RecurringRunner<number>(async (t) => {
+      const current = await t.run(); // observe via the memoized run
+
+      seen.push([current, t.previous]); // `previous` carried forward by the clone
+      return current < 2;
+    });
+
+    runner.schedule(task);
+    await vi.waitFor(() => expect(seen.length).toBe(2));
+
+    expect(seen).toEqual([
+      [1, undefined],
+      [2, 1],
+    ]);
+  });
+
+  it('rejects and stops the recurrence when a run errors (no swallowing/retry)', async () => {
+    let n = 0;
+    const task = new Task<number>(async () => {
+      n += 1;
+
+      if (n === 1) throw new Error('boom');
+
+      return n;
+    });
+    // A reschedule that would otherwise keep going — but a run error ends it.
+    const runner = new RecurringRunner<number>(async () => true);
+
+    // The first cycle's error propagates out of schedule(); the recurrence stops.
+    await expect(runner.schedule(task)).rejects.toThrow('boom');
+
+    await flush();
+    expect(n).toBe(1); // no retry — the errored run was terminal
+
+    runner.destroy();
+  });
+
+  it('aborts an in-flight run when superseded by a new id', async () => {
+    let aborted = false;
+    const slow = new Task<number>(
+      (signal) =>
+        new Promise<number>((_resolve, reject) => {
+          signal.addEventListener('abort', () => {
+            aborted = true;
+            reject(new DOMException('Aborted', 'AbortError'));
+          });
+        }),
+      { id: 'a' }
+    );
+    let ranB = false;
+    const taskB = new Task<number>(
+      async () => {
+        ranB = true;
+        return 1;
+      },
+      { id: 'b' }
+    );
+    const runner = new RecurringRunner<number>(parkUntilAborted);
+
+    runner.schedule(slow); // parks mid-run, listening for abort
+    runner.schedule(taskB); // new id → abort slow's in-flight run, run B
+    expect(aborted).toBe(true);
+
+    await vi.waitFor(() => expect(ranB).toBe(true));
+    runner.destroy();
+  });
+
+  it('ignores a schedule with the same id — the existing recurrence keeps running', async () => {
+    let runsA = 0;
+    const taskA = new Task<number>(async () => ++runsA, { id: 'x' });
+    let runsB = 0;
+    const taskB = new Task<number>(async () => ++runsB, { id: 'x' }); // same id
+    const runner = new RecurringRunner<number>(parkUntilAborted);
+
+    runner.schedule(taskA);
+    await vi.waitFor(() => expect(runsA).toBe(1)); // A ran once, parked
+
+    runner.schedule(taskB); // same id while A is live → ignored
+    await flush();
+    expect(runsB).toBe(0);
+    expect(runsA).toBe(1);
+
+    runner.destroy();
+  });
+
+  it('a new id aborts the prior recurrence and takes over the slot', async () => {
+    let runsA = 0;
+    const taskA = new Task<number>(async () => ++runsA, { id: 'a' });
+    let runsB = 0;
+    const taskB = new Task<number>(async () => ++runsB, { id: 'b' });
+    const runner = new RecurringRunner<number>(parkUntilAborted);
+
+    runner.schedule(taskA);
+    await vi.waitFor(() => expect(runsA).toBe(1)); // A parked
+
+    runner.schedule(taskB); // new id → abort A, run B
+    await vi.waitFor(() => expect(runsB).toBe(1));
+
+    await flush();
+    expect(runsA).toBe(1); // A did not re-run
+
+    runner.destroy();
+  });
+
+  it('frees the slot when a recurrence stops, so the same id can start fresh', async () => {
+    let runs = 0;
+    // Fresh instances per schedule (the real pattern — callers build a new task
+    // each time); a shared counter observes runs across both.
+    const make = () => new Task<number>(async () => ++runs, { id: 'x' });
+    const runner = new RecurringRunner<number>(async () => false); // stop after first run
+
+    runner.schedule(make());
+    await vi.waitFor(() => expect(runs).toBe(1));
+    await flush(); // let the loop run reschedule → false → free the slot
+
+    runner.schedule(make()); // not deduped (recurrence ended) → runs fresh
+    await vi.waitFor(() => expect(runs).toBe(2));
+
+    runner.destroy();
+  });
+
+  it('abortAll stops the recurrence; no re-run', async () => {
+    let runs = 0;
+    const task = new Task<number>(async () => ++runs, { id: 'x' });
+    const runner = new RecurringRunner<number>(parkUntilAborted);
+
+    runner.schedule(task);
+    await vi.waitFor(() => expect(runs).toBe(1));
+
+    runner.abortAll();
+    await flush();
+    expect(runs).toBe(1);
+  });
+
+  it('does not run after destroy', async () => {
+    let runs = 0;
+    const task = new Task<number>(async () => ++runs, { id: 'x' });
+    const runner = new RecurringRunner<number>(async () => true);
+
+    runner.destroy();
+    runner.schedule(task);
+    await flush();
+    expect(runs).toBe(0);
   });
 });

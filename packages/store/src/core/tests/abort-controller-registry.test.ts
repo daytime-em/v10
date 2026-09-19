@@ -1,15 +1,60 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
+
 import { AbortControllerRegistry } from '../abort-controller-registry';
 
+const NativeAbortController = globalThis.AbortController;
+
+/** Counts controller constructions so lazy creation can be asserted. */
+function countControllers() {
+  const counter = { count: 0 };
+
+  class CountingAbortController extends NativeAbortController {
+    constructor() {
+      super();
+      counter.count++;
+    }
+  }
+
+  vi.stubGlobal('AbortController', CountingAbortController);
+
+  return counter;
+}
+
 describe('AbortControllerRegistry', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  describe('constructor', () => {
+    it('does not construct an AbortController', () => {
+      const controllers = countControllers();
+
+      new AbortControllerRegistry();
+
+      expect(controllers.count).toBe(0);
+    });
+
+    it('constructs an AbortController on first base read', () => {
+      const controllers = countControllers();
+      const signals = new AbortControllerRegistry();
+
+      void signals.base;
+      void signals.base;
+
+      expect(controllers.count).toBe(1);
+    });
+  });
+
   describe('base', () => {
     it('returns an AbortSignal', () => {
       const signals = new AbortControllerRegistry();
+
       expect(signals.base).toBeInstanceOf(AbortSignal);
     });
 
     it('is not aborted initially', () => {
       const signals = new AbortControllerRegistry();
+
       expect(signals.base.aborted).toBe(false);
     });
 
@@ -29,6 +74,7 @@ describe('AbortControllerRegistry', () => {
       signals.reset();
 
       const base2 = signals.base;
+
       expect(base1).not.toBe(base2);
       expect(base2.aborted).toBe(false);
     });
@@ -40,6 +86,14 @@ describe('AbortControllerRegistry', () => {
       signals.clear();
 
       expect(base.aborted).toBe(false);
+    });
+
+    it('is not aborted when reset() runs before it is read', () => {
+      const signals = new AbortControllerRegistry();
+
+      signals.reset();
+
+      expect(signals.base.aborted).toBe(false);
     });
   });
 
@@ -56,6 +110,7 @@ describe('AbortControllerRegistry', () => {
     it('does not abort base', () => {
       const signals = new AbortControllerRegistry();
       const base = signals.base;
+
       signals.supersede('test');
 
       signals.clear();
@@ -76,6 +131,15 @@ describe('AbortControllerRegistry', () => {
   });
 
   describe('reset', () => {
+    it('does not construct an AbortController when base was never read', () => {
+      const controllers = countControllers();
+      const signals = new AbortControllerRegistry();
+
+      signals.reset();
+
+      expect(controllers.count).toBe(0);
+    });
+
     it('aborts base signal', () => {
       const signals = new AbortControllerRegistry();
       const base = signals.base;
@@ -101,6 +165,7 @@ describe('AbortControllerRegistry', () => {
       signals.reset();
 
       const base2 = signals.base;
+
       expect(base1).not.toBe(base2);
       expect(base2.aborted).toBe(false);
     });
@@ -166,6 +231,7 @@ describe('AbortControllerRegistry', () => {
       signals.clear();
 
       const signal2 = signals.supersede('test');
+
       expect(signal1.aborted).toBe(true);
       expect(signal2.aborted).toBe(false);
     });

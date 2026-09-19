@@ -1,5 +1,5 @@
-import { PopoverElement } from '../../ui/popover/popover-element';
-import { safeDefine } from '../safe-define';
+import { safeDefine } from '../../registration/safe-define';
+import { PopoverElement } from '../../ui/popover/element';
 
 safeDefine(PopoverElement);
 

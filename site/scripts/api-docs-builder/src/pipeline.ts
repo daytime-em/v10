@@ -1,20 +1,22 @@
 /**
- * Testable pipeline functions for the API docs builder.
+ * Component reference discovery, extraction, and building.
  *
- * Extracted from index.ts so that E2E tests can run the full pipeline
- * against a fixture monorepo by passing a custom root path.
+ * Kept separate from the CLI so E2E tests can run the component pipeline against a fixture monorepo by passing a custom
+ * root path.
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import * as ts from 'typescript';
-import * as tae from 'typescript-api-extractor';
+
+import { parseSync } from 'oxc-parser';
+
 import { NAME_OVERRIDES } from '../../../src/utils/api-reference-overrides.js';
 import { extractCore } from './core-handler.js';
 import { extractCSSVars } from './css-vars-handler.js';
 import { extractDataAttrs } from './data-attrs-handler.js';
 import { abbreviateType } from './formatter.js';
 import { extractHtml } from './html-handler.js';
-import { extractPartDescription, extractParts, extractSubPartProps } from './parts-handler.js';
+import { getJSDocTag, OxcProject, staticName } from './oxc-project.js';
+import { extractPartDescription, extractParts, extractSubPartProps, type PartExport } from './parts-handler.js';
 import type {
   ComponentReference,
   ComponentSource,
@@ -23,12 +25,14 @@ import type {
   CSSVarsExtraction,
   DataAttrDef,
   DataAttrsExtraction,
+  ExtraDataAttrsSource,
+  HtmlExtraction,
   PartReference,
   PartSource,
   PropDef,
   StateDef,
 } from './types.js';
-import { kebabToPascal, partKebabFromSource, sortProps } from './utils.js';
+import { kebabToPascal, log, partKebabFromSource, pascalToKebab, sortProps } from './utils.js';
 
 // ─── Overrides ─────────────────────────────────────────────────────
 
@@ -36,16 +40,17 @@ import { kebabToPascal, partKebabFromSource, sortProps } from './utils.js';
 // pages — re-exported here for the builder's existing import surface.
 export { NAME_OVERRIDES };
 
-// Parts whose HTML element file doesn't follow the `{component}-{part}-element.ts` convention.
+// Parts whose HTML element file basename differs from the part kebab.
 // Key: `{component}/{part-kebab}`, Value: element file basename (without `.ts`).
 export const PART_ELEMENT_OVERRIDES: Record<string, string> = {
-  'tooltip/provider': 'tooltip-group-element',
+  'tooltip/provider': 'group',
 };
 
 // ─── Build Helpers ─────────────────────────────────────────────────
 
 export function buildProps(coreData: CoreExtraction): Record<string, PropDef> {
   const props: Record<string, PropDef> = {};
+
   for (const prop of coreData.props) {
     props[prop.name] = {
       type: prop.type,
@@ -56,33 +61,44 @@ export function buildProps(coreData: CoreExtraction): Record<string, PropDef> {
     };
 
     if (props[prop.name]!.detailedType === undefined) delete props[prop.name]!.detailedType;
+
     if (props[prop.name]!.description === undefined) delete props[prop.name]!.description;
+
     if (props[prop.name]!.default === undefined) delete props[prop.name]!.default;
+
     if (!props[prop.name]!.required) delete props[prop.name]!.required;
   }
+
   return props;
 }
 
 export function buildState(coreData: CoreExtraction): Record<string, StateDef> {
   const state: Record<string, StateDef> = {};
+
   for (const s of coreData.state) {
     state[s.name] = {
       type: s.type,
       detailedType: s.detailedType,
       description: s.description,
     };
+
     if (state[s.name]!.detailedType === undefined) delete state[s.name]!.detailedType;
+
     if (state[s.name]!.description === undefined) delete state[s.name]!.description;
   }
+
   return state;
 }
 
 export function buildDataAttrs(dataAttrsData: DataAttrsExtraction): Record<string, DataAttrDef> {
   const dataAttributes: Record<string, DataAttrDef> = {};
+
   for (const attr of dataAttrsData.attrs) {
     const def: DataAttrDef = { description: attr.description };
+
     if (attr.type) {
       const abbreviated = abbreviateType(attr.name, attr.type);
+
       if (abbreviated) {
         def.type = abbreviated;
         def.detailedType = attr.type;
@@ -90,20 +106,94 @@ export function buildDataAttrs(dataAttrsData: DataAttrsExtraction): Record<strin
         def.type = attr.type;
       }
     }
+
     dataAttributes[attr.name] = def;
   }
+
   return dataAttributes;
 }
 
 export function buildCSSVars(cssVarsData: CSSVarsExtraction): Record<string, CSSVarDef> {
   const cssCustomProperties: Record<string, CSSVarDef> = {};
+
   for (const v of cssVarsData.vars) {
     cssCustomProperties[v.name] = { description: v.description };
   }
+
   return cssCustomProperties;
 }
 
+function buildHtmlPlatform(htmlData: HtmlExtraction): NonNullable<PartReference['platforms']['html']> {
+  const platform: NonNullable<PartReference['platforms']['html']> = { tagName: htmlData.tagName };
+
+  if (htmlData.events.length > 0) platform.events = htmlData.events;
+
+  return platform;
+}
+
 // ─── Discovery ─────────────────────────────────────────────────────
+
+// Extra data-attrs files in a component dir declare their target parts with
+// a `@parts item, radio-item` JSDoc tag on an exported `*DataAttrs` const.
+// They cover attrs a DOM layer applies to part elements directly, which the
+// per-part stateAttrMap heuristic can't see (e.g. menu/item.ts applied by
+// dom/ui/menu/menu.ts). Any simple file name works; discovery keys off the
+// tag, not the file name.
+function discoverExtraDataAttrs(componentDir: string): ExtraDataAttrsSource[] {
+  const extras: ExtraDataAttrsSource[] = [];
+
+  for (const entry of fs.readdirSync(componentDir, { withFileTypes: true })) {
+    if (!entry.isFile() || !entry.name.endsWith('.ts') || entry.name === 'data.ts') continue;
+
+    const filePath = path.join(componentDir, entry.name);
+    const content = fs.readFileSync(filePath, 'utf-8');
+    if (!content.includes('@parts')) continue;
+
+    const parsed = parseSync(filePath, content);
+    const sourceFile = { filePath, source: content, program: parsed.program, comments: parsed.comments };
+
+    for (const statement of parsed.program.body) {
+      if (statement.type !== 'ExportNamedDeclaration') continue;
+
+      const declaration = statement.declaration;
+      if (declaration?.type !== 'VariableDeclaration') continue;
+
+      const exportName = declaration.declarations
+        .map((declarator) => staticName(declarator.id))
+        .find((name) => name?.endsWith('DataAttrs'));
+      if (!exportName) continue;
+
+      const tagValue = getJSDocTag(sourceFile, declaration, 'parts');
+      if (!tagValue) continue;
+
+      const parts = tagValue
+        .split(',')
+        .map((part) => part.trim())
+        .filter(Boolean);
+      if (parts.length === 0) continue;
+
+      extras.push({ path: filePath, exportName, parts });
+    }
+  }
+
+  return extras;
+}
+
+function findFiles(directory: string, matches: (name: string) => boolean): string[] {
+  const files: string[] = [];
+
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    const entryPath = path.join(directory, entry.name);
+
+    if (entry.isDirectory()) {
+      if (entry.name !== 'tests') files.push(...findFiles(entryPath, matches));
+    } else if (matches(entry.name)) {
+      files.push(entryPath);
+    }
+  }
+
+  return files;
+}
 
 export function discoverComponents(monorepoRoot: string): ComponentSource[] {
   const coreUiPath = path.join(monorepoRoot, 'packages/core/src/core/ui');
@@ -124,10 +214,10 @@ export function discoverComponents(monorepoRoot: string): ComponentSource[] {
     const componentName = NAME_OVERRIDES[dir.name] ?? kebabToPascal(dir.name);
     const componentDir = path.join(coreUiPath, dir.name);
 
-    const coreFile = path.join(componentDir, `${dir.name}-core.ts`);
-    const dataAttrsFile = path.join(componentDir, `${dir.name}-data-attrs.ts`);
-    const cssVarsFile = path.join(componentDir, `${dir.name}-css-vars.ts`);
-    const htmlFile = path.join(htmlUiPath, dir.name, `${dir.name}-element.ts`);
+    const coreFile = path.join(componentDir, 'core.ts');
+    const dataAttrsFile = path.join(componentDir, 'data.ts');
+    const cssVarsFile = path.join(componentDir, 'vars.ts');
+    const htmlFile = path.join(htmlUiPath, dir.name, 'element.ts');
 
     const source: ComponentSource = {
       name: componentName,
@@ -135,12 +225,20 @@ export function discoverComponents(monorepoRoot: string): ComponentSource[] {
     };
 
     if (fs.existsSync(coreFile)) source.corePath = coreFile;
+
     if (fs.existsSync(dataAttrsFile)) source.dataAttrsPath = dataAttrsFile;
+
     if (fs.existsSync(cssVarsFile)) source.cssVarsPath = cssVarsFile;
+
     if (fs.existsSync(htmlFile)) source.htmlPath = htmlFile;
 
     const partsIndexFile = path.join(reactUiPath, dir.name, 'index.parts.ts');
+
     if (fs.existsSync(partsIndexFile)) source.partsIndexPath = partsIndexFile;
+
+    const extraDataAttrs = discoverExtraDataAttrs(componentDir);
+
+    if (extraDataAttrs.length > 0) source.extraDataAttrs = extraDataAttrs;
 
     if (source.corePath) {
       components.push(source);
@@ -152,77 +250,8 @@ export function discoverComponents(monorepoRoot: string): ComponentSource[] {
 
 // ─── Program Creation ──────────────────────────────────────────────
 
-export function createComponentProgram(sources: ComponentSource[], monorepoRoot: string): ts.Program {
-  const htmlUiPath = path.join(monorepoRoot, 'packages/html/src/ui');
-  const coreUiPath = path.join(monorepoRoot, 'packages/core/src/core/ui');
-  const files: string[] = [];
-
-  for (const source of sources) {
-    if (source.corePath) files.push(source.corePath);
-    if (source.dataAttrsPath) files.push(source.dataAttrsPath);
-    if (source.cssVarsPath) files.push(source.cssVarsPath);
-    if (source.htmlPath) files.push(source.htmlPath);
-    if (source.partsIndexPath) files.push(source.partsIndexPath);
-
-    if (source.partsIndexPath) {
-      const htmlDir = path.join(htmlUiPath, source.kebab);
-      if (fs.existsSync(htmlDir)) {
-        const elementFiles = fs.readdirSync(htmlDir).filter((f) => f.endsWith('-element.ts'));
-        for (const file of elementFiles) {
-          const fullPath = path.join(htmlDir, file);
-          if (!files.includes(fullPath)) {
-            files.push(fullPath);
-          }
-        }
-      }
-
-      const reactDir = path.dirname(source.partsIndexPath);
-      const reactFiles = fs.readdirSync(reactDir).filter((f) => f.endsWith('.tsx'));
-      for (const file of reactFiles) {
-        const fullPath = path.join(reactDir, file);
-        if (!files.includes(fullPath)) {
-          files.push(fullPath);
-        }
-      }
-
-      const partsSource = fs.readFileSync(source.partsIndexPath, 'utf-8');
-      const nonLocalImports = partsSource.match(/from\s+['"]([^.][^'"]*)['"]/g);
-      if (nonLocalImports) {
-        for (const match of nonLocalImports) {
-          const importPath = match.replace(/from\s+['"]/, '').replace(/['"]$/, '');
-          const originDir = path.resolve(path.dirname(source.partsIndexPath), importPath, '..');
-          const originKebab = path.basename(originDir);
-
-          const originHtmlDir = path.join(htmlUiPath, originKebab);
-          if (fs.existsSync(originHtmlDir)) {
-            const originElementFiles = fs.readdirSync(originHtmlDir).filter((f) => f.endsWith('-element.ts'));
-            for (const file of originElementFiles) {
-              const fullPath = path.join(originHtmlDir, file);
-              if (!files.includes(fullPath)) {
-                files.push(fullPath);
-              }
-            }
-          }
-
-          if (fs.existsSync(originDir)) {
-            const originReactFiles = fs.readdirSync(originDir).filter((f) => f.endsWith('.tsx'));
-            for (const file of originReactFiles) {
-              const fullPath = path.join(originDir, file);
-              if (!files.includes(fullPath)) {
-                files.push(fullPath);
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-
-  const tsconfigPath = path.join(monorepoRoot, 'tsconfig.base.json');
-  const config = tae.loadConfig(tsconfigPath);
-  config.options.rootDir = monorepoRoot;
-
-  return ts.createProgram(files, config.options);
+export function createComponentProgram(_sources: ComponentSource[], monorepoRoot: string): OxcProject {
+  return new OxcProject(monorepoRoot);
 }
 
 // ─── Part Discovery ────────────────────────────────────────────────
@@ -230,6 +259,7 @@ export function createComponentProgram(sources: ComponentSource[], monorepoRoot:
 function instantiatesCore(filePath: string, componentName: string): boolean {
   try {
     const content = fs.readFileSync(filePath, 'utf-8');
+
     return new RegExp(`new ${componentName}Core\\b`).test(content);
   } catch {
     return false;
@@ -244,7 +274,37 @@ function usesDataAttrs(filePath: string): boolean {
   }
 }
 
-export function discoverParts(source: ComponentSource, program: ts.Program, monorepoRoot: string): PartSource[] {
+interface PartElementFile {
+  path: string;
+  /**
+   * Element class name, derived from the component folder and file basename (`slider/track.ts` ->
+   * `SliderTrackElement`).
+   */
+  className: string;
+}
+
+// Part element files sit beside the primary `element.ts` and are named after the part kebab
+// (`slider/track.ts`). A nested React part source (`./chapters/title`) is honored when the
+// same folder exists on the HTML side; otherwise the part is looked up flat in the component dir.
+function resolvePartElement(
+  htmlDir: string,
+  componentKebab: string,
+  source: string,
+  partKebab: string
+): PartElementFile | undefined {
+  const basename = PART_ELEMENT_OVERRIDES[`${componentKebab}/${partKebab}`] ?? partKebab;
+  const relativeDir = path.dirname(source.replace(/^\.\//, ''));
+  const candidates = [path.join(htmlDir, `${basename}.ts`)];
+
+  if (relativeDir !== '.') candidates.unshift(path.join(htmlDir, relativeDir, `${basename}.ts`));
+
+  const filePath = candidates.find((candidate) => fs.existsSync(candidate));
+  if (!filePath) return undefined;
+
+  return { path: filePath, className: `${kebabToPascal(`${componentKebab}-${basename}`)}Element` };
+}
+
+export function discoverParts(source: ComponentSource, program: OxcProject, monorepoRoot: string): PartSource[] {
   if (!source.partsIndexPath) return [];
 
   const htmlUiPath = path.join(monorepoRoot, 'packages/html/src/ui');
@@ -253,49 +313,64 @@ export function discoverParts(source: ComponentSource, program: ts.Program, mono
   const partExports = extractParts(source.partsIndexPath, program);
   if (partExports.length === 0) return [];
 
-  const localExports = partExports.filter((p) => p.source.startsWith('./'));
-  const nonLocalExports = partExports.filter((p) => !p.source.startsWith('./'));
-
-  if (localExports.length === 0 && nonLocalExports.length === 0) return [];
+  const namedExports = partExports.filter((p) => p.kind === 'named');
+  const localExports = namedExports.filter((p) => p.source.startsWith('./'));
+  const nonLocalExports = namedExports.filter((p) => !p.source.startsWith('./'));
+  const namespaceExports = partExports.filter((p) => p.kind === 'namespace' && p.source.startsWith('./'));
 
   const componentKebab = source.kebab;
   const htmlDir = path.join(htmlUiPath, componentKebab);
 
+  // Parts that share one source file (`./component` exporting Root, Options, and Value) are named after
+  // their export; a file-derived kebab would collide and collapse them into a single part.
+  const sharedSources = new Set(
+    localExports.map((part) => part.source).filter((value, index, all) => all.indexOf(value) !== index)
+  );
+
   const parts: PartSource[] = [];
 
   for (const partExport of localExports) {
-    const kebab = partKebabFromSource(partExport.source, componentKebab);
+    const kebab = sharedSources.has(partExport.source)
+      ? pascalToKebab(partExport.name)
+      : partKebabFromSource(partExport.source, componentKebab);
 
-    const overrideKey = `${componentKebab}/${kebab}`;
-    const elementBasename = PART_ELEMENT_OVERRIDES[overrideKey] ?? `${componentKebab}-${kebab}-element`;
-    const subPartElementFile = path.join(htmlDir, `${elementBasename}.ts`);
-    const hasSubPartElement = fs.existsSync(subPartElementFile);
+    const partElement = resolvePartElement(htmlDir, componentKebab, partExport.source, kebab);
 
     const reactFile = path.join(path.dirname(source.partsIndexPath!), `${partExport.source.replace('./', '')}.tsx`);
     const reactPath = fs.existsSync(reactFile) ? reactFile : undefined;
 
-    const isPrimary = !!reactPath && instantiatesCore(reactPath, source.name);
-
-    const subPartUsesDataAttrs = !isPrimary && !!reactPath && usesDataAttrs(reactPath);
-
-    const part: PartSource = {
+    parts.push({
       name: partExport.name,
       localName: partExport.localName,
       kebab,
-      isPrimary,
-      htmlPath: hasSubPartElement ? subPartElementFile : isPrimary ? source.htmlPath : undefined,
+      isPrimary: !!reactPath && instantiatesCore(reactPath, source.name),
+      htmlPath: partElement?.path,
+      htmlElementName: partElement?.className,
       reactPath,
-      dataAttrsPath: subPartUsesDataAttrs ? source.dataAttrsPath : undefined,
-      dataAttrsComponentName: subPartUsesDataAttrs ? source.name : undefined,
-    };
+    });
+  }
 
-    parts.push(part);
+  selectPrimaryPart(parts, source);
+
+  for (const part of parts) {
+    if (part.isPrimary || !part.reactPath || !usesDataAttrs(part.reactPath)) continue;
+
+    part.dataAttrsPath = source.dataAttrsPath;
+    part.dataAttrsComponentName = source.name;
+  }
+
+  for (const namespaceExport of namespaceExports) {
+    parts.push(
+      ...discoverNamespaceParts(namespaceExport, source.partsIndexPath, componentKebab, htmlDir, coreUiPath, program)
+    );
   }
 
   if (nonLocalExports.length > 0) {
     const bySource = new Map<string, typeof nonLocalExports>();
+
     for (const exp of nonLocalExports) {
       const list = bySource.get(exp.source) ?? [];
+
       list.push(exp);
       bySource.set(exp.source, list);
     }
@@ -316,16 +391,22 @@ export function discoverParts(source: ComponentSource, program: ts.Program, mono
         const originExport = originExports.find((o) => o.name === reExport.name);
         if (!originExport) continue;
 
+        if (originExport.kind === 'namespace') {
+          parts.push(
+            ...discoverNamespaceParts(originExport, originPartsFile, originKebab, originHtmlDir, coreUiPath, program)
+          );
+          continue;
+        }
+
         const kebab = partKebabFromSource(originExport.source, originKebab);
 
-        const subPartElementFile = path.join(originHtmlDir, `${originKebab}-${kebab}-element.ts`);
-        const hasSubPartElement = fs.existsSync(subPartElementFile);
+        const partElement = resolvePartElement(originHtmlDir, originKebab, originExport.source, kebab);
 
         const reactFile = path.join(originReactDir, `${originExport.source.replace('./', '')}.tsx`);
         const reactPath = fs.existsSync(reactFile) ? reactFile : undefined;
 
         const reExportUsesDataAttrs = !!reactPath && usesDataAttrs(reactPath);
-        const originDataAttrsFile = path.join(coreUiPath, originKebab, `${originKebab}-data-attrs.ts`);
+        const originDataAttrsFile = path.join(coreUiPath, originKebab, 'data.ts');
         const originDataAttrsPath =
           reExportUsesDataAttrs && fs.existsSync(originDataAttrsFile) ? originDataAttrsFile : undefined;
         const originComponentName = originDataAttrsPath ? kebabToPascal(originKebab) : undefined;
@@ -335,7 +416,8 @@ export function discoverParts(source: ComponentSource, program: ts.Program, mono
           localName: originExport.localName,
           kebab,
           isPrimary: false,
-          htmlPath: hasSubPartElement ? subPartElementFile : undefined,
+          htmlPath: partElement?.path,
+          htmlElementName: partElement?.className,
           reactPath,
           dataAttrsPath: originDataAttrsPath,
           dataAttrsComponentName: originComponentName,
@@ -346,25 +428,85 @@ export function discoverParts(source: ComponentSource, program: ts.Program, mono
     }
   }
 
-  const primaryCount = parts.filter((p) => p.isPrimary).length;
-  if (primaryCount > 1) {
-    let foundFirst = false;
-    for (const p of parts) {
-      if (p.isPrimary) {
-        if (foundFirst) p.isPrimary = false;
-        foundFirst = true;
-      }
-    }
+  return parts.sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary));
+}
+
+// A namespace re-export (`export * as Thumbnail from './thumbnail/index.parts'`) groups nested parts that render
+// as `Slider.Thumbnail.Root` and `Slider.Thumbnail.Image`. The nested index sits in a folder named after the
+// namespace; its `Root` maps to the element file of that name (`slider/thumbnail.ts`), other nested parts to
+// `{namespace}-{part}.ts`. Nested exports may point outside the component (`../../thumbnail/image`); those parts
+// take their React file, and any data attributes, from the component that owns that file.
+function discoverNamespaceParts(
+  namespaceExport: PartExport,
+  partsIndexPath: string,
+  componentKebab: string,
+  htmlDir: string,
+  coreUiPath: string,
+  program: OxcProject
+): PartSource[] {
+  const nestedIndexFile = path.resolve(path.dirname(partsIndexPath), `${namespaceExport.source}.ts`);
+  if (!fs.existsSync(nestedIndexFile)) return [];
+
+  const namespaceKebab = pascalToKebab(namespaceExport.name);
+  const nestedDir = path.dirname(nestedIndexFile);
+  const parts: PartSource[] = [];
+
+  for (const nestedExport of extractParts(nestedIndexFile, program)) {
+    if (nestedExport.kind !== 'named') continue;
+
+    const partKebab = partKebabFromSource(nestedExport.source, namespaceKebab);
+    const elementBasename = nestedExport.name === 'Root' ? namespaceKebab : `${namespaceKebab}-${partKebab}`;
+    const partElement = resolvePartElement(
+      htmlDir,
+      componentKebab,
+      `./${namespaceKebab}/${partKebab}`,
+      elementBasename
+    );
+
+    const reactFile = path.resolve(nestedDir, `${nestedExport.source}.tsx`);
+    const reactPath = fs.existsSync(reactFile) ? reactFile : undefined;
+
+    const ownerKebab = reactPath ? path.basename(path.dirname(reactPath)) : componentKebab;
+    const ownerDataAttrsFile = path.join(coreUiPath, ownerKebab, 'data.ts');
+    const ownsDataAttrs = !!reactPath && usesDataAttrs(reactPath) && fs.existsSync(ownerDataAttrsFile);
+
+    parts.push({
+      name: `${namespaceExport.name}.${nestedExport.name}`,
+      localName: nestedExport.localName,
+      kebab: `${namespaceKebab}-${partKebab}`,
+      isPrimary: false,
+      htmlPath: partElement?.path,
+      htmlElementName: partElement?.className,
+      reactPath,
+      dataAttrsPath: ownsDataAttrs ? ownerDataAttrsFile : undefined,
+      dataAttrsComponentName: ownsDataAttrs ? kebabToPascal(ownerKebab) : undefined,
+    });
   }
 
-  return parts.sort((a, b) => Number(b.isPrimary) - Number(a.isPrimary));
+  return parts.sort(
+    (a, b) => Number(b.kebab === `${namespaceKebab}-root`) - Number(a.kebab === `${namespaceKebab}-root`)
+  );
+}
+
+// Exactly one local part carries the shared core data and the component's root element. Several parts
+// qualify when they share a source file that constructs the core; none qualifies when the React parts
+// drive the core through hooks instead of constructing it. Both cases fall back to the `Root` part.
+function selectPrimaryPart(parts: PartSource[], source: ComponentSource): void {
+  const primaries = parts.filter((part) => part.isPrimary);
+  const root = parts.find((part) => part.name === 'Root');
+
+  const primary = primaries.length === 0 ? root : (primaries.find((part) => part.name === 'Root') ?? primaries[0]);
+  if (!primary) return;
+
+  for (const part of parts) part.isPrimary = part === primary;
+
+  primary.htmlPath ??= source.htmlPath;
 }
 
 // ─── Component Reference Building ──────────────────────────────────
 
-function buildSingleComponentReference(source: ComponentSource, program: ts.Program): ComponentReference | null {
+function buildSingleComponentReference(source: ComponentSource, program: OxcProject): ComponentReference | null {
   const coreData = source.corePath ? extractCore(source.corePath, program, source.name) : null;
-
   if (!coreData) return null;
 
   const dataAttrsData = source.dataAttrsPath ? extractDataAttrs(source.dataAttrsPath, program, source.name) : null;
@@ -382,7 +524,7 @@ function buildSingleComponentReference(source: ComponentSource, program: ts.Prog
   };
 
   if (htmlData) {
-    result.platforms.html = { tagName: htmlData.tagName };
+    result.platforms.html = buildHtmlPlatform(htmlData);
   }
 
   if (result.description === undefined) delete result.description;
@@ -392,7 +534,7 @@ function buildSingleComponentReference(source: ComponentSource, program: ts.Prog
 
 function buildMultiPartReference(
   source: ComponentSource,
-  program: ts.Program,
+  program: OxcProject,
   parts: PartSource[]
 ): ComponentReference | null {
   const partsRecord: Record<string, PartReference> = {};
@@ -422,15 +564,17 @@ function buildMultiPartReference(
       };
 
       if (!partRef.description) delete partRef.description;
+
       if (htmlData) {
-        partRef.platforms.html = { tagName: htmlData.tagName };
+        partRef.platforms.html = buildHtmlPlatform(htmlData);
       }
 
       partsRecord[part.kebab] = partRef;
     } else {
-      const elementName = part.htmlPath ? kebabToPascal(path.basename(part.htmlPath, '.ts')) : undefined;
       const htmlData =
-        part.htmlPath && elementName ? extractHtml(part.htmlPath, program, source.name, elementName) : null;
+        part.htmlPath && part.htmlElementName
+          ? extractHtml(part.htmlPath, program, source.name, part.htmlElementName)
+          : null;
 
       const dataAttrsData =
         part.dataAttrsPath && part.dataAttrsComponentName
@@ -438,6 +582,12 @@ function buildMultiPartReference(
           : null;
 
       const subPartProps = part.reactPath ? extractSubPartProps(part.reactPath, program, part.localName) : {};
+
+      if (htmlData) {
+        for (const [name, prop] of Object.entries(subPartProps)) {
+          if (htmlData.properties.includes(name)) prop.frameworks = ['html', 'react'];
+        }
+      }
 
       const partRef: PartReference = {
         name: part.name,
@@ -450,11 +600,35 @@ function buildMultiPartReference(
       };
 
       if (!partRef.description) delete partRef.description;
+
       if (htmlData) {
-        partRef.platforms.html = { tagName: htmlData.tagName };
+        partRef.platforms.html = buildHtmlPlatform(htmlData);
       }
 
       partsRecord[part.kebab] = partRef;
+    }
+  }
+
+  for (const extra of source.extraDataAttrs ?? []) {
+    const componentName = extra.exportName.replace(/DataAttrs$/, '');
+    const extraData = extractDataAttrs(extra.path, program, componentName);
+
+    if (!extraData) {
+      log.warn(`No ${extra.exportName} export found in ${extra.path}; skipping @parts merge`);
+      continue;
+    }
+
+    const extraAttrs = buildDataAttrs(extraData);
+
+    for (const partKebab of extra.parts) {
+      const partRef = partsRecord[partKebab];
+
+      if (!partRef) {
+        log.warn(`@parts in ${extra.path} references unknown part "${partKebab}" on ${source.name}`);
+        continue;
+      }
+
+      partRef.dataAttributes = { ...partRef.dataAttributes, ...extraAttrs };
     }
   }
 
@@ -471,14 +645,16 @@ function buildMultiPartReference(
 
 export function buildComponentReference(
   source: ComponentSource,
-  program: ts.Program,
+  program: OxcProject,
   monorepoRoot: string
 ): ComponentReference | null {
   if (source.partsIndexPath) {
     const parts = discoverParts(source, program, monorepoRoot);
-    if (parts.length > 1) {
-      return buildMultiPartReference(source, program, parts);
-    }
+    if (parts.length > 1) return buildMultiPartReference(source, program, parts);
+  }
+
+  if (source.extraDataAttrs?.length) {
+    log.warn(`Ignoring @parts data-attrs in ${source.kebab}: ${source.name} is not a multi-part component`);
   }
 
   return buildSingleComponentReference(source, program);
@@ -501,6 +677,7 @@ export function generateComponentReferences(monorepoRoot: string): ComponentResu
 
   for (const source of sources) {
     const apiRef = buildComponentReference(source, program, monorepoRoot);
+
     if (apiRef) {
       apiRef.props = sortProps(apiRef.props);
       results.push({ name: source.name, kebab: source.kebab, reference: apiRef });
@@ -509,113 +686,3 @@ export function generateComponentReferences(monorepoRoot: string): ComponentResu
 
   return results;
 }
-
-// ═══════════════════════════════════════════════════════════════════════
-// FEATURE REFERENCE PIPELINE
-// ═══════════════════════════════════════════════════════════════════════
-
-export interface FeatureStateDef {
-  type: string;
-  detailedType?: string;
-  description?: string;
-}
-
-export interface FeatureActionDef {
-  type: string;
-  detailedType?: string;
-  description?: string;
-}
-
-export interface FeatureReference {
-  name: string;
-  slug: string;
-  description?: string;
-  state: Record<string, FeatureStateDef>;
-  actions: Record<string, FeatureActionDef>;
-}
-
-export interface FeatureResult {
-  name: string;
-  slug: string;
-  reference: FeatureReference;
-}
-
-export { generateFeatureReferences } from './feature-handler.js';
-
-// ═══════════════════════════════════════════════════════════════════════
-// PRESET REFERENCE PIPELINE
-// ═══════════════════════════════════════════════════════════════════════
-
-export interface PresetSkinDef {
-  name: string;
-  tagName?: string;
-  cssImport?: string;
-}
-
-export interface PresetFeatureRef {
-  name: string;
-  slug: string;
-  hasReference: boolean;
-}
-
-export interface PresetReference {
-  name: string;
-  description?: string;
-  featureBundle: string;
-  features: PresetFeatureRef[];
-  html: {
-    skins: PresetSkinDef[];
-    mediaElement?: string;
-  };
-  react: {
-    skins: PresetSkinDef[];
-    mediaElement: string;
-  };
-}
-
-export interface PresetResult {
-  name: string;
-  reference: PresetReference;
-}
-
-export { generatePresetReferences } from './preset-handler.js';
-
-// ═══════════════════════════════════════════════════════════════════════
-// MEDIA ELEMENT REFERENCE PIPELINE
-// ═══════════════════════════════════════════════════════════════════════
-
-export interface HostPropertyDef {
-  type: string;
-  description?: string;
-  readonly: boolean;
-  overridesNative?: boolean;
-  /** Serialized default value from the host's `*DefaultProps` export. */
-  default?: string;
-}
-
-export interface MediaEventDef {
-  name: string;
-  /** Description from a `@fires` JSDoc tag on the dispatching class or mixin. */
-  description?: string;
-}
-
-export interface MediaElementReference {
-  name: string;
-  tagName: string;
-  mediaType: 'video' | 'audio';
-  hostProperties: Record<string, HostPropertyDef>;
-  nativeAttributes: string[];
-  events: {
-    native: string[];
-    elementSpecific: MediaEventDef[];
-  };
-  methods: string[];
-  cssCustomProperties: Record<string, { description: string }>;
-}
-
-export interface MediaElementResult {
-  name: string;
-  reference: MediaElementReference;
-}
-
-export { generateMediaElementReferences } from './media-element-handler.js';

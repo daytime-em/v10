@@ -1,5 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vite-plus/test';
+
 import type { PartiallyResolvedAudioTrack, PartiallyResolvedTextTrack, PartiallyResolvedVideoTrack } from '../../types';
+import { getMultivariantPlaylistMetadata, getSessionData } from '../../types';
 import { parseMultivariantPlaylist } from '../parse-multivariant';
 
 describe('parseMultivariantPlaylist', () => {
@@ -31,12 +33,16 @@ video-1080p.m3u8`;
 
     const result = parseMultivariantPlaylist(text, { url: baseUrl });
 
-    // Should have video selection set
+    // These STREAM-INFs list an audio codec (mp4a) with no AUDIO group, so the
+    // audio is muxed into each rendition — both codecs are retained on the track
+    // (the SourceBuffer mimetype must cover the muxed media).
     const videoSet = result.selectionSets.find((s) => s.type === 'video');
+
     expect(videoSet).toBeDefined();
     expect(videoSet?.switchingSets).toHaveLength(1);
 
     const videoTracks = videoSet?.switchingSets[0]?.tracks;
+
     expect(videoTracks).toHaveLength(3);
 
     // First track (360p)
@@ -45,7 +51,7 @@ video-1080p.m3u8`;
       bandwidth: 800000,
       width: 640,
       height: 360,
-      codecs: ['avc1.4d401e'],
+      codecs: ['avc1.4d401e', 'mp4a.40.2'],
     });
     expect(typeof videoTracks?.[0]?.id).toBe('string');
 
@@ -55,26 +61,44 @@ video-1080p.m3u8`;
       bandwidth: 1400000,
       width: 1280,
       height: 720,
-      codecs: ['avc1.4d401f'],
+      codecs: ['avc1.4d401f', 'mp4a.40.2'],
       mimeType: 'video/mp4',
     });
     expect(typeof videoTracks?.[1]?.id).toBe('string');
 
     // Third track (1080p) - verify all fields
     const track1080p = videoTracks?.[2] as PartiallyResolvedVideoTrack;
+
     expect(track1080p).toMatchObject({
       type: 'video',
       url: 'https://example.com/video-1080p.m3u8',
       bandwidth: 2800000,
       width: 1920,
       height: 1080,
-      codecs: ['avc1.640028'],
+      codecs: ['avc1.640028', 'mp4a.40.2'],
       mimeType: 'video/mp4',
     });
     expect(typeof track1080p.id).toBe('string');
     // Optional fields not present
     expect(track1080p.frameRate).toBeUndefined();
     expect(track1080p.audioGroupIds).toBeUndefined();
+  });
+
+  it('keeps an audioless video rendition video-only (no audio codec in CODECS, no AUDIO group)', () => {
+    // The inverse of the muxed case: no audio codec listed and no AUDIO group
+    // means the rendition is genuinely video-only — the muxed-codec retention
+    // must key on an audio codec actually being present, not fabricate one from
+    // the mere absence of an AUDIO group.
+    const text = `#EXTM3U
+#EXT-X-VERSION:7
+#EXT-X-STREAM-INF:BANDWIDTH=900000,RESOLUTION=1280x720,CODECS="avc1.640020"
+video-720p.m3u8`;
+
+    const result = parseMultivariantPlaylist(text, { url: baseUrl });
+    const videoTracks = result.selectionSets.find((s) => s.type === 'video')?.switchingSets[0]?.tracks;
+
+    expect(videoTracks).toHaveLength(1);
+    expect(videoTracks?.[0]?.codecs).toEqual(['avc1.640020']);
   });
 
   it('de-duplicates the EXT-X-STREAM-INF cross-product: one track per video URI, accumulating audio groups', () => {
@@ -102,6 +126,7 @@ https://example.com/v720.m3u8`;
     expect(videoTracks).toHaveLength(2);
 
     const v1080 = videoTracks.find((t) => t.url === 'https://example.com/v1080.m3u8');
+
     expect(v1080?.audioGroupIds).toEqual(['audio-51', 'audio-hi']);
     // Lowest combined BANDWIDTH across the duplicates (the stereo pairing).
     expect(v1080?.bandwidth).toBe(2800000);
@@ -109,6 +134,7 @@ https://example.com/v720.m3u8`;
     expect(v1080?.codecs).toEqual(['avc1.640028']);
 
     const v720 = videoTracks.find((t) => t.url === 'https://example.com/v720.m3u8');
+
     expect(v720?.audioGroupIds).toEqual(['audio-51', 'audio-hi']);
     expect(v720?.bandwidth).toBe(1400000);
   });
@@ -154,6 +180,7 @@ video.m3u8`;
       bandwidth: 800000,
     });
     const videoTrack = videoTracks?.[0] as PartiallyResolvedVideoTrack | undefined;
+
     expect(videoTrack?.width).toBeUndefined();
     expect(videoTrack?.height).toBeUndefined();
     expect(videoTrack?.codecs).toEqual([]); // Default when not in playlist
@@ -201,6 +228,7 @@ video.m3u8`;
     const videoTracks = videoSet?.switchingSets[0]?.tracks;
 
     const videoTrack = videoTracks?.[0] as PartiallyResolvedVideoTrack | undefined;
+
     expect(videoTrack?.frameRate).toEqual({
       frameRateNumerator: 30000,
       frameRateDenominator: 1001,
@@ -316,13 +344,75 @@ https://example.com/v.m3u8`;
       const audioMed = audioTracks?.find((t) => (t as PartiallyResolvedAudioTrack).groupId === 'audio-med-0') as
         | PartiallyResolvedAudioTrack
         | undefined;
+
       expect(audioMed?.codecs).toEqual(['mp4a.40.2']);
 
       // audio-hi-0 is NOT referenced - no codec info
       const audioHi = audioTracks?.find((t) => (t as PartiallyResolvedAudioTrack).groupId === 'audio-hi-0') as
         | PartiallyResolvedAudioTrack
         | undefined;
+
       expect(audioHi?.codecs).toEqual([]); // Default when not extracted from streams
+    });
+
+    // Mux serves an audio-only asset this way: the rendition carries the naming and
+    // DEFAULT/AUTOSELECT but no URI, because its media is the audio-only variant
+    // that references the group.
+    const muxAudioOnlyPlaylist = `#EXTM3U
+#EXT-X-VERSION:5
+#EXT-X-INDEPENDENT-SEGMENTS
+
+#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio-0",NAME="Default",AUTOSELECT=YES,DEFAULT=YES
+#EXT-X-STREAM-INF:BANDWIDTH=211200,AVERAGE-BANDWIDTH=211200,CODECS="mp4a.40.2",AUDIO="audio-0",CLOSED-CAPTIONS=NONE
+audio.m3u8`;
+
+    it('merges a URI-less audio rendition into the audio-only stream carrying it', () => {
+      const result = parseMultivariantPlaylist(muxAudioOnlyPlaylist, { url: baseUrl });
+
+      expect(result.selectionSets).toHaveLength(1);
+      const audioTracks = result.selectionSets[0]?.switchingSets[0]?.tracks;
+
+      // One track, not the rendition and the stream separately.
+      expect(audioTracks).toHaveLength(1);
+      expect(audioTracks?.[0]).toMatchObject({
+        type: 'audio',
+        // The stream's URL and bandwidth: what the rendition has nothing of.
+        url: 'https://example.com/audio.m3u8',
+        bandwidth: 211200,
+        // The rendition's naming and selection metadata.
+        groupId: 'audio-0',
+        name: 'Default',
+        default: true,
+        autoselect: true,
+        codecs: ['mp4a.40.2'],
+      });
+    });
+
+    it('leaves no unfetchable audio track for an audio-only asset', () => {
+      const result = parseMultivariantPlaylist(muxAudioOnlyPlaylist, { url: baseUrl });
+      const audioTracks = result.selectionSets[0]?.switchingSets[0]?.tracks ?? [];
+
+      expect(audioTracks.every((track) => track.url !== '')).toBe(true);
+    });
+
+    it('keeps a URI-less rendition separate from a group carried by video streams', () => {
+      // Same rendition shape, but the stream referencing the group is muxed A/V, so
+      // there is no audio-only track to merge into and the rendition stands alone.
+      const text = `#EXTM3U
+#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio-0",NAME="Default",AUTOSELECT=YES,DEFAULT=YES
+#EXT-X-STREAM-INF:BANDWIDTH=2493700,CODECS="mp4a.40.2,avc1.640020",AUDIO="audio-0",RESOLUTION=1280x720
+video.m3u8`;
+
+      const result = parseMultivariantPlaylist(text, { url: baseUrl });
+      const audioSet = result.selectionSets.find((s) => s.type === 'audio');
+      const audioTracks = audioSet?.switchingSets[0]?.tracks;
+
+      expect(audioTracks).toHaveLength(1);
+      // Still URL-less, since the audio lives in the video stream's segments rather
+      // than a playlist of its own. Merging that case would mean folding audio into a
+      // video track, which no Mux asset needs — the muxed-audio shapes it serves
+      // declare no audio rendition at all.
+      expect(audioTracks?.[0]).toMatchObject({ type: 'audio', groupId: 'audio-0', url: '' });
     });
   });
 
@@ -341,6 +431,7 @@ video.m3u8`;
       expect(textTracks).toHaveLength(2);
 
       const englishTrack = textTracks?.[0] as PartiallyResolvedTextTrack | undefined;
+
       expect(englishTrack).toMatchObject({
         type: 'text',
         label: 'English',
@@ -370,6 +461,7 @@ video.m3u8`;
       const textTracks = textSet?.switchingSets[0]?.tracks;
 
       const textTrack = textTracks?.[0] as PartiallyResolvedTextTrack | undefined;
+
       expect(textTrack?.forced).toBe(true);
     });
 
@@ -402,18 +494,21 @@ video.m3u8`;
 
       // DEFAULT=YES only: default flag should NOT be set (following hls.js pattern)
       const defaultOnly = textTracks?.[0];
+
       expect(defaultOnly?.label).toBe('Only Default');
       expect(defaultOnly?.default).toBeUndefined();
       expect(defaultOnly?.autoselect).toBeUndefined();
 
       // AUTOSELECT=YES only: default flag should NOT be set
       const autoselectOnly = textTracks?.[1];
+
       expect(autoselectOnly?.label).toBe('Only Autoselect');
       expect(autoselectOnly?.default).toBeUndefined();
       expect(autoselectOnly?.autoselect).toBe(true);
 
       // Both DEFAULT=YES and AUTOSELECT=YES: default flag SHOULD be set
       const both = textTracks?.[2];
+
       expect(both?.label).toBe('Both');
       expect(both?.default).toBe(true);
       expect(both?.autoselect).toBe(true);
@@ -434,13 +529,100 @@ video.m3u8`;
 
       // Track with AUTOSELECT=YES
       const autoTrack = textTracks?.[0];
+
       expect(autoTrack?.autoselect).toBe(true);
       expect(autoTrack?.default).toBeUndefined();
 
       // Track without flags
       const normalTrack = textTracks?.[1];
+
       expect(normalTrack?.autoselect).toBeUndefined();
       expect(normalTrack?.default).toBeUndefined();
+    });
+  });
+
+  describe('EXT-X-SESSION-DATA', () => {
+    const text = `#EXTM3U
+#EXT-X-VERSION:7
+#EXT-X-SESSION-DATA:DATA-ID="com.apple.hls.chapters",FORMAT=JSON,URI="chapters.json"
+#EXT-X-SESSION-DATA:DATA-ID="com.example.title",VALUE="Big Buck Bunny, Remastered",LANGUAGE="en"
+#EXT-X-SESSION-DATA:DATA-ID="com.example.title",VALUE="Conejo",LANGUAGE="es"
+#EXT-X-SESSION-DATA:DATA-ID="com.example.blob",URI="https://cdn.example.com/blob.bin",FORMAT=RAW
+#EXT-X-SESSION-DATA:VALUE="no data id"
+#EXT-X-SESSION-DATA:DATA-ID="com.example.empty"
+#EXT-X-STREAM-INF:BANDWIDTH=800000
+video.m3u8`;
+
+    it('stores session data under the multivariant playlist metadata with URIs resolved against the playlist', () => {
+      const result = parseMultivariantPlaylist(text, { url: baseUrl });
+      const sessionData = getMultivariantPlaylistMetadata(result)?.sessionData;
+
+      expect(sessionData).toHaveLength(4);
+      expect(sessionData?.[0]).toEqual({
+        dataId: 'com.apple.hls.chapters',
+        uri: 'https://example.com/chapters.json',
+        format: 'JSON',
+      });
+    });
+
+    it('defaults FORMAT to JSON and honors FORMAT=RAW', () => {
+      const result = parseMultivariantPlaylist(text, { url: baseUrl });
+
+      expect(getSessionData(result, 'com.apple.hls.chapters')[0]?.format).toBe('JSON');
+      expect(getSessionData(result, 'com.example.blob')[0]).toEqual({
+        dataId: 'com.example.blob',
+        uri: 'https://cdn.example.com/blob.bin',
+        format: 'RAW',
+      });
+    });
+
+    it('keeps a quoted VALUE containing commas and its LANGUAGE', () => {
+      const result = parseMultivariantPlaylist(text, { url: baseUrl });
+
+      expect(getSessionData(result, 'com.example.title')[0]).toEqual({
+        dataId: 'com.example.title',
+        value: 'Big Buck Bunny, Remastered',
+        language: 'en',
+      });
+    });
+
+    it('keeps multiple entries sharing a DATA-ID when LANGUAGE differs, in playlist order', () => {
+      const result = parseMultivariantPlaylist(text, { url: baseUrl });
+      const titles = getSessionData(result, 'com.example.title');
+
+      expect(titles.map((entry) => entry.language)).toEqual(['en', 'es']);
+      expect(titles[1]?.value).toBe('Conejo');
+    });
+
+    it('skips a tag without DATA-ID and a tag with neither VALUE nor URI', () => {
+      const result = parseMultivariantPlaylist(text, { url: baseUrl });
+
+      expect(getSessionData(result).map((entry) => entry.dataId)).toEqual([
+        'com.apple.hls.chapters',
+        'com.example.title',
+        'com.example.title',
+        'com.example.blob',
+      ]);
+    });
+
+    it('does not disturb stream parsing', () => {
+      const result = parseMultivariantPlaylist(text, { url: baseUrl });
+      const videoTracks = result.selectionSets.find((s) => s.type === 'video')?.switchingSets[0]?.tracks;
+
+      expect(videoTracks).toHaveLength(1);
+      expect(videoTracks?.[0]?.url).toBe('https://example.com/video.m3u8');
+    });
+
+    it('leaves metadata undefined when the playlist carries no session data', () => {
+      const result = parseMultivariantPlaylist(
+        `#EXTM3U
+#EXT-X-STREAM-INF:BANDWIDTH=800000
+video.m3u8`,
+        { url: baseUrl }
+      );
+
+      expect(result.metadata).toBeUndefined();
+      expect(getSessionData(result)).toEqual([]);
     });
   });
 
@@ -569,6 +751,7 @@ v2/prog_index.m3u8
 
       // Find video selection set
       const videoSet = result.selectionSets.find((s) => s.type === 'video');
+
       expect(videoSet).toBeDefined();
       expect(videoSet!.switchingSets).toBeDefined();
 
@@ -576,10 +759,12 @@ v2/prog_index.m3u8
       // entries (8 URIs × 3 audio groups: mp4a / ac-3 / ec-3), the HLS
       // cross-product; the parser de-duplicates by URI to one track per rendition.
       const allVideoTracks = videoSet!.switchingSets.flatMap((ss) => ss.tracks);
+
       expect(allVideoTracks.length).toBe(8);
 
       // Check first track details (960x540, 60fps, avc1+mp4a, aud1)
       const firstTrack = allVideoTracks.find((t) => t.bandwidth === 2177116);
+
       expect(firstTrack).toBeDefined();
       expect(firstTrack!.width).toBe(960);
       expect(firstTrack!.height).toBe(540);
@@ -589,23 +774,28 @@ v2/prog_index.m3u8
 
       // Find audio selection set
       const audioSet = result.selectionSets.find((s) => s.type === 'audio');
+
       expect(audioSet).toBeDefined();
       expect(audioSet!.switchingSets.length).toBeGreaterThan(0);
 
       // Should have 3 audio groups (aud1, aud2, aud3)
       const allAudioTracks = audioSet!.switchingSets.flatMap((ss) => ss.tracks);
+
       expect(allAudioTracks.length).toBe(3);
 
       // Check audio track details
       const stereoTrack = allAudioTracks.find((t) => t.url.includes('a1/'));
+
       expect(stereoTrack).toBeDefined();
 
       // Find text/subtitle selection set
       const textSet = result.selectionSets.find((s) => s.type === 'text');
+
       expect(textSet).toBeDefined();
 
       // Should have subtitle track
       const allTextTracks = textSet!.switchingSets.flatMap((ss) => ss.tracks);
+
       expect(allTextTracks.length).toBeGreaterThan(0);
       expect(allTextTracks[0]?.url).toContain('s1/en/prog_index.m3u8');
     });

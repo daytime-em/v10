@@ -1,4 +1,6 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
+
+import { MEDIA_PLAYLIST_METADATA_KEY } from '../../types';
 import { canPlayTrack } from '../capabilities';
 
 describe('canPlayTrack', () => {
@@ -8,6 +10,7 @@ describe('canPlayTrack', () => {
 
   it('returns the isTypeSupported verdict for the track built MIME', () => {
     const spy = vi.spyOn(MediaSource, 'isTypeSupported');
+
     spy.mockReturnValueOnce(true).mockReturnValueOnce(false);
 
     expect(canPlayTrack({ mimeType: 'video/mp4', codecs: ['supported.1'] })).toBe(true);
@@ -26,17 +29,20 @@ describe('canPlayTrack', () => {
     canPlayTrack({ mimeType: 'video/mp4', codecs: [...codecs] });
 
     const calls = spy.mock.calls.filter(([mime]) => mime === 'video/mp4; codecs="memo.unique.codec"');
+
     expect(calls).toHaveLength(1);
   });
 
   it('passes through (true) for an unprobeable track with no mimeType', () => {
     const spy = vi.spyOn(MediaSource, 'isTypeSupported');
+
     expect(canPlayTrack({ codecs: ['avc1.42E01E'] })).toBe(true);
     expect(spy).not.toHaveBeenCalled();
   });
 
   it('passes through (true) when codecs is empty or absent (unprobeable, CODECS optional)', () => {
     const spy = vi.spyOn(MediaSource, 'isTypeSupported');
+
     expect(canPlayTrack({ mimeType: 'video/mp4', codecs: [] })).toBe(true);
     expect(canPlayTrack({ mimeType: 'video/mp4' })).toBe(true);
     expect(spy).not.toHaveBeenCalled();
@@ -47,11 +53,40 @@ describe('canPlayTrack', () => {
     // temporary limitation (the browser supports it, but our pipeline assumes an
     // init segment) — both are pruned before selection rather than stalling.
     const spy = vi.spyOn(MediaSource, 'isTypeSupported').mockReturnValue(true);
+
     expect(canPlayTrack({ mimeType: 'video/mp2t', codecs: ['avc1.640028'] })).toBe(false);
     expect(canPlayTrack({ mimeType: 'audio/aac', codecs: ['mp4a.40.2'] })).toBe(false);
     // Even without codecs (the usual pass-through case), they're still dropped.
     expect(canPlayTrack({ mimeType: 'video/mp2t' })).toBe(false);
     expect(canPlayTrack({ mimeType: 'audio/aac' })).toBe(false);
     expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('asserts an encrypted rendition unplayable, whatever its codecs probe as', () => {
+    // No EME / license pipeline, so an encrypted rendition would append and fail
+    // to decode with nothing to explain it. Pruned before selection instead.
+    const spy = vi.spyOn(MediaSource, 'isTypeSupported').mockReturnValue(true);
+    const encrypted = {
+      mimeType: 'video/mp4',
+      codecs: ['avc1.640028'],
+      metadata: { [MEDIA_PLAYLIST_METADATA_KEY]: { encrypted: true } },
+    };
+
+    expect(canPlayTrack(encrypted)).toBe(false);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('leaves a clear rendition to the codec probe', () => {
+    // The other half of what makes a partially-encrypted source still play: only
+    // the encrypted renditions drop out.
+    const spy = vi.spyOn(MediaSource, 'isTypeSupported').mockReturnValue(true);
+    const clear = {
+      mimeType: 'video/mp4',
+      codecs: ['avc1.640029'],
+      metadata: { [MEDIA_PLAYLIST_METADATA_KEY]: { encrypted: false } },
+    };
+
+    expect(canPlayTrack(clear)).toBe(true);
+    expect(spy).toHaveBeenCalled();
   });
 });

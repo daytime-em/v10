@@ -1,14 +1,23 @@
 {
   "name": "@videojs/utils",
-  "type": "module",
-  "version": "10.0.0-beta.24",
+  "version": "10.0.0-rc.2",
   "description": "Utility functions and helpers for Video.js",
+  "keywords": [
+    "media",
+    "utils",
+    "videojs"
+  ],
+  "homepage": "https://videojs.org",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/videojs/v10",
     "directory": "packages/utils"
   },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
   "sideEffects": false,
   "exports": {
     "./array": {
@@ -27,6 +36,14 @@
       "types": "./dist/function.d.ts",
       "default": "./dist/function.js"
     },
+    "./i18n": {
+      "types": "./dist/i18n.d.ts",
+      "default": "./dist/i18n.js"
+    },
+    "./jwt": {
+      "types": "./dist/jwt.d.ts",
+      "default": "./dist/jwt.js"
+    },
     "./object": {
       "types": "./dist/object.d.ts",
       "default": "./dist/object.js"
@@ -34,6 +51,10 @@
     "./predicate": {
       "types": "./dist/predicate.d.ts",
       "default": "./dist/predicate.js"
+    },
+    "./percent": {
+      "types": "./dist/percent.d.ts",
+      "default": "./dist/percent.js"
     },
     "./string": {
       "types": "./dist/string.d.ts",
@@ -56,27 +77,19 @@
       "default": "./dist/types.js"
     }
   },
-  "files": [
-    "dist"
-  ],
-  "scripts": {
-    "build": "tsdown",
-    "build:watch": "tsdown --watch ./src --no-clean",
-    "dev": "pnpm run build:watch",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "clean": "rimraf --glob dist types '*.tsbuildinfo'"
-  },
-  "devDependencies": {
-    "tsdown": "^0.21.9",
-    "vitest": "^4.1.0"
-  },
   "publishConfig": {
     "access": "public"
   },
-  "keywords": [
-    "media",
-    "utils",
-    "videojs"
-  ]
+  "scripts": {
+    "build:watch": "vp pack --watch ./src --no-clean",
+    "dev": "pnpm run build:watch",
+    "test": "vp test run",
+    "test:watch": "vp test",
+    "clean": "rimraf --glob dist types '*.tsbuildinfo'"
+  },
+  "devDependencies": {
+    "jsdom": "^27.0.0",
+    "vite-plus": "catalog:",
+    "vitest": "catalog:"
+  }
 }

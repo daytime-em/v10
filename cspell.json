@@ -1,16 +1,18 @@
 {
   "version": "0.2",
-  "ignorePaths": ["package.json", "tsconfig.json"],
+  "ignorePaths": ["package.json", "tsconfig.json", "packages/core/src/core/i18n/locales/!(all|en).ts"],
   "dictionaryDefinitions": [],
   "dictionaries": ["css", "html", "node", "typescript", "npm"],
   "words": [
     "antfu",
     "demuxed",
+    "hlsjs",
     "multivariant",
     "nanostores",
     "noautohide",
     "noto",
     "nums",
+    "oxlint",
     "plyr",
     "prefs",
     "rahim",
@@ -19,8 +21,7 @@
     "squircle",
     "videojs",
     "vidstack",
-    "vitesse",
-    "wouter"
+    "vjsc"
   ],
   "ignoreWords": [],
   "import": []

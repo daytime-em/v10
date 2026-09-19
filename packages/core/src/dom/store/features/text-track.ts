@@ -1,66 +1,151 @@
-import { findTrackElement, getTextTrackList, isCaptionOrSubtitleTrack, listen } from '@videojs/utils/dom';
-import { isMediaTextTrackCapable, isQuerySelectorAllCapable } from '../../../core/media/predicate';
-import type { MediaTextCue, MediaTextTrack, MediaTextTrackState } from '../../../core/media/state';
-import type { TextTrackLike } from '../../../core/media/types';
+import type {
+  MediaTextCue,
+  MediaTextTrack,
+  MediaTextTrackCapability,
+  MediaTextTrackState,
+  TextTrackLike,
+} from '@videojs/media';
+import {
+  isMediaSeekCapable,
+  isMediaSourceCapable,
+  isMediaTextTrackCapable,
+  isQuerySelectorAllCapable,
+} from '@videojs/media';
+import { findTrackElement, isCaptionOrSubtitleTrack, listen } from '@videojs/utils/dom';
+import { isNil } from '@videojs/utils/predicate';
+
+import { DEFAULT_LOCALE, findLocaleKeys, getCanonicalLocaleKey } from '../../../core/i18n';
 import { definePlayerFeature } from '../../feature';
+import { clampCuesToDuration } from '../text-cues';
+
+interface IdentifiedTrack {
+  id: string;
+  track: TextTrackLike;
+}
 
 function getTrackId(track: TextTrackLike, index: number): string {
   return track.id || `track:${index}:${track.kind}:${track.language}:${track.label}`;
 }
 
+/**
+ * Caption/subtitle tracks paired with the ids exposed through `textTrackList`, ordered like the captions menu so
+ * index-based fallbacks agree with the UI.
+ */
+function getSubtitlesTracks(media: MediaTextTrackCapability): IdentifiedTrack[] {
+  return Array.from(media.textTracks)
+    .map((track, index) => ({ id: getTrackId(track, index), track }))
+    .filter(({ track }) => isCaptionOrSubtitleTrack(track))
+    .sort((a, b) => (a.track.kind > b.track.kind ? 1 : a.track.kind < b.track.kind ? -1 : 0));
+}
+
+/** Show at most one caption/subtitle track; passing `null` disables them all. */
+function showOnly(tracks: IdentifiedTrack[], active: TextTrackLike | null): void {
+  for (const { track } of tracks) {
+    const mode = track === active ? 'showing' : 'disabled';
+
+    if (track.mode !== mode) track.mode = mode;
+  }
+}
+
+/**
+ * Map a media element's `crossOrigin` to a CORS mode. Per the CORS-settings attribute, any value other than
+ * `use-credentials` is Anonymous — including the empty string and unknown keywords.
+ */
+function toCorsMode(value: string | null | undefined): MediaTextTrackState['thumbnailTrackCrossOrigin'] {
+  if (isNil(value)) return null;
+
+  return value.toLowerCase() === 'use-credentials' ? 'use-credentials' : 'anonymous';
+}
+
+function findLocaleTrack(tracks: IdentifiedTrack[], locale: string): IdentifiedTrack | undefined {
+  const localeKey = getCanonicalLocaleKey(locale);
+  const keys = findLocaleKeys(locale);
+
+  // Translation lookup falls back to English; caption selection should not.
+  if (localeKey !== DEFAULT_LOCALE && !localeKey.startsWith(`${DEFAULT_LOCALE}-`)) keys.pop();
+
+  for (const key of keys) {
+    const exact = tracks.find(({ track }) => getCanonicalLocaleKey(track.language) === key);
+    if (exact) return exact;
+
+    const regional = tracks.find(({ track }) => getCanonicalLocaleKey(track.language).startsWith(`${key}-`));
+    if (regional) return regional;
+  }
+
+  return undefined;
+}
+
 export const textTrackFeature = definePlayerFeature({
   name: 'textTrack',
-  state: ({ target }): MediaTextTrackState => ({
-    chaptersCues: [],
-    thumbnailCues: [],
-    thumbnailTrackSrc: null,
-    textTrackList: [],
-    subtitlesShowing: false,
-    toggleSubtitles(forceShow?: boolean) {
-      const { media } = target();
-      if (!isMediaTextTrackCapable(media)) return false;
+  state: ({ target }): MediaTextTrackState => {
+    // The track the user last had showing. Remembered so `toggleSubtitles()`
+    // restores that one selection instead of enabling every language at once.
+    let lastShownId: string | null = null;
 
-      const subtitlesTracks = getTextTrackList(media, isCaptionOrSubtitleTrack);
-      if (!subtitlesTracks.length) return false;
+    return {
+      chaptersCues: [],
+      thumbnailCues: [],
+      thumbnailTrackSrc: null,
+      thumbnailTrackCrossOrigin: null,
+      textTrackList: [],
+      subtitlesShowing: false,
+      toggleSubtitles(forceShow?: boolean) {
+        const { media } = target();
+        if (!isMediaTextTrackCapable(media)) return false;
 
-      const showing = subtitlesTracks.some((track) => track.mode === 'showing');
-      const nextShowing = forceShow ?? !showing;
+        const subtitlesTracks = getSubtitlesTracks(media);
+        if (!subtitlesTracks.length) return false;
 
-      for (const track of subtitlesTracks) {
-        track.mode = nextShowing ? 'showing' : 'disabled';
-      }
+        const showing = subtitlesTracks.find(({ track }) => track.mode === 'showing');
+        const nextShowing = forceShow ?? !showing;
 
-      return nextShowing;
-    },
-    selectSubtitlesTrack(value: string) {
-      const { media } = target();
-      if (!isMediaTextTrackCapable(media)) return;
+        if (showing) lastShownId = showing.id;
 
-      const subtitlesTracks = Array.from(media.textTracks)
-        .map((track, index) => ({ index, track }))
-        .filter(({ track }) => isCaptionOrSubtitleTrack(track));
-      if (!subtitlesTracks.length) return;
-
-      if (value === 'off') {
-        for (const { track } of subtitlesTracks) {
-          track.mode = 'disabled';
+        if (!nextShowing) {
+          showOnly(subtitlesTracks, null);
+          return false;
         }
-        return;
-      }
 
-      const active = subtitlesTracks.find(({ index, track }) => getTrackId(track, index) === value);
-      const track = active?.track;
-      if (!track) return;
+        // Restore the remembered track, then prefer the browser locale before
+        // falling back to the first track the captions menu offers.
+        const next =
+          showing ??
+          subtitlesTracks.find(({ id }) => id === lastShownId) ??
+          findLocaleTrack(subtitlesTracks, globalThis.navigator?.language ?? '') ??
+          subtitlesTracks[0]!;
 
-      for (const { track: candidate } of subtitlesTracks) {
-        candidate.mode = candidate === track ? 'showing' : 'disabled';
-      }
-    },
-  }),
+        lastShownId = next.id;
+        showOnly(subtitlesTracks, next.track);
+
+        return true;
+      },
+      selectSubtitlesTrack(value: string) {
+        const { media } = target();
+        if (!isMediaTextTrackCapable(media)) return;
+
+        const subtitlesTracks = getSubtitlesTracks(media);
+        if (!subtitlesTracks.length) return;
+
+        if (value === 'off') {
+          const showing = subtitlesTracks.find(({ track }) => track.mode === 'showing');
+
+          if (showing) lastShownId = showing.id;
+
+          showOnly(subtitlesTracks, null);
+          return;
+        }
+
+        const active = subtitlesTracks.find(({ id }) => id === value);
+        if (!active) return;
+
+        lastShownId = active.id;
+        showOnly(subtitlesTracks, active.track);
+      },
+    };
+  },
 
   attach({ target, signal, set }) {
     const { media } = target;
-
     if (!isMediaTextTrackCapable(media)) return;
 
     let trackCleanup: AbortController | null = null;
@@ -76,7 +161,9 @@ export const textTrackFeature = definePlayerFeature({
 
       for (let i = 0; i < media.textTracks.length; i++) {
         const track = media.textTracks[i]!;
+
         if (!chaptersTrack && track.kind === 'chapters') chaptersTrack = track;
+
         if (!thumbnailTrack && track.kind === 'metadata' && track.label === 'thumbnails') thumbnailTrack = track;
 
         textTrackList.push({
@@ -92,19 +179,25 @@ export const textTrackFeature = definePlayerFeature({
         }
       }
 
+      // The last chapter of an in-stream chapters document is open-ended on the
+      // track; consumers read it ending where the media does.
+      const chaptersCues = clampCuesToDuration(chaptersTrack?.cues, isMediaSeekCapable(media) ? media.duration : NaN);
       // VTTCue extends TextTrackCue with `text` — cast via `unknown` since
       // the CueList is typed as TextTrackCue which doesn't expose `text`.
-      const chaptersCues: MediaTextCue[] = chaptersTrack?.cues
-        ? (Array.from(chaptersTrack.cues) as unknown as MediaTextCue[])
-        : [];
       const thumbnailCues: MediaTextCue[] = thumbnailTrack?.cues
         ? (Array.from(thumbnailTrack.cues) as unknown as MediaTextCue[])
         : [];
 
       let thumbnailTrackSrc: string | null = null;
+      let thumbnailTrackCrossOrigin: MediaTextTrackState['thumbnailTrackCrossOrigin'] = null;
+
       if (thumbnailTrack) {
         const el = findTrackElement(media, thumbnailTrack);
+
         thumbnailTrackSrc = el?.src ?? null;
+        // Read the host rather than any inner native element: for a custom media
+        // element the attribute lives on the host and is forwarded inward.
+        thumbnailTrackCrossOrigin = isMediaSourceCapable(media) ? toCorsMode(media.crossOrigin) : null;
       }
 
       // Listen for <track> load events on tracks that don't have cues yet.
@@ -119,18 +212,29 @@ export const textTrackFeature = definePlayerFeature({
         }
       }
 
-      set({ chaptersCues, thumbnailCues, thumbnailTrackSrc, textTrackList, subtitlesShowing });
+      set({
+        chaptersCues,
+        thumbnailCues,
+        thumbnailTrackSrc,
+        thumbnailTrackCrossOrigin,
+        textTrackList,
+        subtitlesShowing,
+      });
     };
 
     sync();
 
     const textTracks = media.textTracks;
+
     if (textTracks instanceof EventTarget) {
       listen(textTracks, 'addtrack', sync, { signal });
       listen(textTracks, 'removetrack', sync, { signal });
       listen(textTracks, 'change', sync, { signal });
     }
+
     listen(media, 'loadstart', sync, { signal });
+    // The chapter clamp follows the media duration.
+    listen(media, 'durationchange', sync, { signal });
 
     signal.addEventListener('abort', () => trackCleanup?.abort(), { once: true });
   },

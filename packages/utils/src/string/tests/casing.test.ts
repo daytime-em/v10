@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
-import { camelCase, kebabCase, pascalCase } from '../casing';
+import { describe, expect, it } from 'vite-plus/test';
+
+import { camelCase, kebabCase, pascalCase, snakeCase } from '../casing';
 
 describe('casing', () => {
   describe('pascalCase', () => {
@@ -39,6 +40,16 @@ describe('casing', () => {
 
     it('converts snake_case', () => {
       expect(camelCase('hello_world')).toBe('helloWorld');
+    });
+  });
+
+  describe('snakeCase', () => {
+    it('converts camelCase', () => {
+      expect(snakeCase('assetStartTime')).toBe('asset_start_time');
+    });
+
+    it('preserves lowercase', () => {
+      expect(snakeCase('token')).toBe('token');
     });
   });
 

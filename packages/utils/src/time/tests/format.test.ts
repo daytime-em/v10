@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vite-plus/test';
 
 import { formatTime, formatTimeAsPhrase, secondsToIsoDuration } from '../format';
 
@@ -54,48 +54,72 @@ describe('formatTime', () => {
     expect(formatTime(Infinity)).toBe('0:00');
     expect(formatTime(-Infinity)).toBe('0:00');
   });
+
+  it('defaults to English digital formatting', () => {
+    const english = formatTime(90, undefined, { locale: 'en' });
+
+    expect(formatTime(90)).toBe(english);
+  });
+
+  it('uses locale digits', () => {
+    expect(formatTime(90, undefined, { locale: 'fa' })).toBe('۱:۳۰');
+    expect(formatTime(35, 600, { locale: 'fa' })).toBe('۰۰:۳۵');
+  });
 });
 
 describe('formatTimeAsPhrase', () => {
-  it('formats zero seconds', () => {
+  it('formats positive duration', () => {
+    expect(formatTimeAsPhrase(90)).toContain('1');
+    expect(formatTimeAsPhrase(90)).toMatch(/minute/i);
+    expect(formatTimeAsPhrase(90)).toMatch(/30/);
+    expect(formatTimeAsPhrase(300)).toMatch(/5/);
+    expect(formatTimeAsPhrase(300)).toMatch(/minute/i);
+  });
+
+  it('formats zero duration', () => {
     expect(formatTimeAsPhrase(0)).toBe('0 seconds');
   });
 
-  it('formats seconds only', () => {
-    expect(formatTimeAsPhrase(1)).toBe('1 second');
-    expect(formatTimeAsPhrase(30)).toBe('30 seconds');
+  it('adds remaining suffix for negative seconds', () => {
+    expect(formatTimeAsPhrase(-30)).toMatch(/30/);
+    expect(formatTimeAsPhrase(-30)).toMatch(/remaining$/i);
   });
 
-  it('formats minutes and seconds', () => {
-    expect(formatTimeAsPhrase(60)).toBe('1 minute');
-    expect(formatTimeAsPhrase(90)).toBe('1 minute, 30 seconds');
-    expect(formatTimeAsPhrase(125)).toBe('2 minutes, 5 seconds');
+  it('uses formatRemaining only for negative durations', () => {
+    expect(formatTimeAsPhrase(-30, { formatRemaining: (duration) => `quedan ${duration}` })).toMatch(/^quedan /);
+    expect(formatTimeAsPhrase(-30, { formatRemaining: (duration) => `quedan ${duration}` })).toMatch(/30/);
+    expect(formatTimeAsPhrase(90, { formatRemaining: () => 'should-not-appear' })).toBe(formatTimeAsPhrase(90));
   });
 
-  it('formats hours, minutes, and seconds', () => {
-    expect(formatTimeAsPhrase(3600)).toBe('1 hour');
-    expect(formatTimeAsPhrase(3661)).toBe('1 hour, 1 minute, 1 second');
-    expect(formatTimeAsPhrase(7325)).toBe('2 hours, 2 minutes, 5 seconds');
+  it('omits English remaining suffix for non-English locales without formatRemaining', () => {
+    const formatted = formatTimeAsPhrase(-30, { locale: 'es' });
+
+    expect(formatted).toMatch(/30/);
+    expect(formatted).not.toMatch(/remaining$/i);
   });
 
-  it('handles singular vs plural', () => {
-    expect(formatTimeAsPhrase(1)).toBe('1 second');
-    expect(formatTimeAsPhrase(2)).toBe('2 seconds');
-    expect(formatTimeAsPhrase(60)).toBe('1 minute');
-    expect(formatTimeAsPhrase(120)).toBe('2 minutes');
-    expect(formatTimeAsPhrase(3600)).toBe('1 hour');
-    expect(formatTimeAsPhrase(7200)).toBe('2 hours');
+  it('localizes duration units and lists', () => {
+    const en = formatTimeAsPhrase(125, { locale: 'en' });
+    const fr = formatTimeAsPhrase(125, { locale: 'fr' });
+
+    expect(formatTimeAsPhrase(125)).toBe(en);
+    expect(en).toBe('2 minutes, 5 seconds');
+    expect(fr).toContain('2 minutes');
+    expect(fr).toContain('5\u00a0secondes');
   });
 
-  it('adds remaining suffix for negative values', () => {
-    expect(formatTimeAsPhrase(-30)).toBe('30 seconds remaining');
-    expect(formatTimeAsPhrase(-90)).toBe('1 minute, 30 seconds remaining');
-    expect(formatTimeAsPhrase(-3661)).toBe('1 hour, 1 minute, 1 second remaining');
+  it('supports short and narrow unit styles', () => {
+    expect(formatTimeAsPhrase(125, { locale: 'en', style: 'short' })).toBe('2 min, 5 sec');
+    expect(formatTimeAsPhrase(125, { locale: 'en', style: 'narrow' })).toBe('2m 5s');
   });
 
   it('handles invalid values', () => {
     expect(formatTimeAsPhrase(NaN)).toBe('');
     expect(formatTimeAsPhrase(Infinity)).toBe('');
+  });
+
+  it('throws when Intl formatters reject the locale', () => {
+    expect(() => formatTimeAsPhrase(90, { locale: 'not-a-valid-bcp47-tag!!!' })).toThrow(RangeError);
   });
 });
 

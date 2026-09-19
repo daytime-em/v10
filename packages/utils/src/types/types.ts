@@ -1,5 +1,15 @@
 export type UnionToIntersection<U> = (U extends any ? (x: U) => void : never) extends (x: infer I) => void ? I : never;
 
+/** Matches strings that include the literal substring `Needle` (for example a `{param}` token). */
+export type Contains<Needle extends string> = `${string}${Needle}${string}`;
+
+/** The type-level counterpart of `camelCase`, for kebab-case input. */
+export type CamelCase<Value extends string> = Value extends `${infer Head}-${infer Tail}`
+  ? `${Head}${Capitalize<CamelCase<Tail>>}`
+  : Value;
+
+export type EnsureRecord<Keys extends PropertyKey, Value, Target extends Record<Keys, Value>> = Target;
+
 export type Constructor<T, Arguments extends unknown[] = any[]> = new (...args: Arguments) => T;
 
 export type AbstractConstructor<T, Arguments extends unknown[] = any[]> = abstract new (...args: Arguments) => T;

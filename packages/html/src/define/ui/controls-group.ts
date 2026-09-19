@@ -1,5 +1,5 @@
-import { ControlsGroupElement } from '../../ui/controls/controls-group-element';
-import { safeDefine } from '../safe-define';
+import { safeDefine } from '../../registration/safe-define';
+import { ControlsGroupElement } from '../../ui/controls/group';
 
 safeDefine(ControlsGroupElement);
 

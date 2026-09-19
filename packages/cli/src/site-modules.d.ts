@@ -1,25 +1,40 @@
 /**
- * Ambient type declarations for site modules imported via tsdown aliases.
+ * Ambient type declarations for site modules imported via Vite+ pack aliases.
  *
- * The CLI bundles code from `site/src/utils/installation/` at build time using
- * tsdown's `alias` config. These declarations let `tsc` typecheck against the
- * same signatures without following into the site source tree.
+ * The CLI bundles code from `site/src/utils/installation/` at build time using Vite+ pack's `alias` config. These
+ * declarations let `tsc` typecheck against the same signatures without following into the site source tree.
  */
 
 declare module '@/utils/installation/types' {
   export type Renderer =
     | 'background-video'
+    | 'cloudflare'
     | 'dash'
     | 'hls'
     | 'html5-audio'
     | 'html5-video'
     | 'mux-audio'
     | 'mux-video'
-    | 'vimeo';
+    | 'spotify'
+    | 'tiktok'
+    | 'twitch'
+    | 'vimeo'
+    | 'youtube';
   export type Skin = 'video' | 'audio' | 'minimal-video' | 'minimal-audio' | 'none';
-  export type UseCase = 'default-video' | 'default-audio' | 'background-video';
+  export type UseCase = 'default-video' | 'default-audio' | 'live-video' | 'live-audio' | 'background-video';
   export type InstallMethod = 'cdn' | 'npm' | 'pnpm' | 'yarn' | 'bun';
-  export const VALID_RENDERERS: Record<UseCase, Renderer[]>;
+  export interface InstallationPreset {
+    label: string;
+    flag: string;
+    group: string;
+    tagPrefix: string;
+    componentPrefix: string;
+    mediaType: 'video' | 'audio';
+    live: boolean;
+    renderers: readonly Renderer[];
+  }
+  export const USE_CASES: UseCase[];
+  export function getInstallationPreset(useCase: UseCase): InstallationPreset;
 }
 
 declare module '@/utils/installation/codegen' {
@@ -34,6 +49,11 @@ declare module '@/utils/installation/codegen' {
     installMethod: InstallMethod;
   }
 
+  export interface HTMLUsageCode {
+    html: string;
+    imports?: string;
+  }
+
   type ValidationResult = { valid: true } | { valid: false; reason: string };
 
   export function validateInstallationOptions(opts: InstallationOptions): ValidationResult;
@@ -43,18 +63,20 @@ declare module '@/utils/installation/codegen' {
     cdnMediaSubpaths: readonly string[]
   ): Record<'cdn' | 'npm' | 'pnpm' | 'yarn' | 'bun', string>;
 
-  export function generateReactInstallCode(): Record<'npm' | 'pnpm' | 'yarn' | 'bun', string>;
+  export function generateReactInstallCode(
+    opts?: Pick<InstallationOptions, 'renderer'>
+  ): Record<'npm' | 'pnpm' | 'yarn' | 'bun', string>;
 
   export function generateHTMLUsageCode(
     opts: Pick<InstallationOptions, 'useCase' | 'skin' | 'renderer' | 'sourceUrl' | 'installMethod'>
-  ): { html: string; js?: string };
+  ): HTMLUsageCode;
 
   export function generateReactCreateCode(
     opts: Pick<InstallationOptions, 'useCase' | 'skin' | 'renderer'>
   ): Record<'MyPlayer.tsx', string>;
 
   export function generateReactUsageCode(
-    opts: Pick<InstallationOptions, 'renderer' | 'sourceUrl'>
+    opts: Pick<InstallationOptions, 'useCase' | 'renderer' | 'sourceUrl'>
   ): Record<'App.tsx', string>;
 }
 
@@ -99,5 +121,6 @@ declare module '@/utils/installation/renderer-options' {
 
 declare module '@/content/cdn-media.json' {
   const entries: Array<{ id: string }>;
+
   export default entries;
 }

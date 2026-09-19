@@ -1,5 +1,7 @@
-import { beforeEach, describe, expect, it } from 'vitest';
-import { destroyVttResolver, resolveVttSegment } from '../resolve-vtt-segment';
+import { beforeEach, describe, expect, it } from 'vite-plus/test';
+
+import { resolveVttSegmentMetadata } from '../../../text/resolve-vtt-metadata';
+import { destroyVttResolver, resolveVttSegment, resolveVttSegmentWithMetadata } from '../resolve-vtt-segment';
 
 describe('resolveVttSegment', () => {
   beforeEach(() => {
@@ -140,10 +142,12 @@ Second
 `);
 
     const cues1 = await resolveVttSegment(vtt1);
+
     expect(cues1).toHaveLength(1);
     expect(cues1[0]!.text).toBe('First');
 
     const cues2 = await resolveVttSegment(vtt2);
+
     expect(cues2).toHaveLength(1);
     expect(cues2[0]!.text).toBe('Second');
   });
@@ -162,6 +166,7 @@ Test
     destroyVttResolver();
 
     const cues = await resolveVttSegment(vttDataUrl);
+
     expect(cues).toHaveLength(1);
     expect(cues[0]!.text).toBe('Test');
   });
@@ -188,6 +193,60 @@ Test
 `);
 
     const cues = await resolveVttSegment(vttDataUrl);
+
     expect(cues).toHaveLength(1);
+  });
+});
+
+describe('resolveVttSegmentMetadata', () => {
+  it('extracts the X-TIMESTAMP-MAP from the segment header', async () => {
+    const vttDataUrl =
+      'data:text/vtt,' +
+      encodeURIComponent(`WEBVTT
+X-TIMESTAMP-MAP=MPEGTS:900000,LOCAL:00:00:00.000
+
+1
+00:00:00.008 --> 00:00:00.992
+Bip!
+`);
+
+    const metadata = await resolveVttSegmentMetadata(vttDataUrl);
+
+    expect(metadata.timestampMap).toEqual({ mpegts: 900000, local: 0 });
+  });
+
+  it('reports an undefined timestampMap when the segment has no map', async () => {
+    const vttDataUrl =
+      'data:text/vtt,' +
+      encodeURIComponent(`WEBVTT
+
+11
+00:00:46.320 --> 00:01:00.880
+The robot.
+`);
+
+    const metadata = await resolveVttSegmentMetadata(vttDataUrl);
+
+    expect(metadata.timestampMap).toBeUndefined();
+  });
+});
+
+describe('resolveVttSegmentWithMetadata', () => {
+  it('resolves cues and header metadata together', async () => {
+    const vttDataUrl =
+      'data:text/vtt,' +
+      encodeURIComponent(`WEBVTT
+X-TIMESTAMP-MAP=MPEGTS:900000,LOCAL:00:00:00.000
+
+1
+00:00:00.008 --> 00:00:00.992
+Bip!
+`);
+
+    const { cues, metadata } = await resolveVttSegmentWithMetadata(vttDataUrl);
+
+    expect(cues).toHaveLength(1);
+    expect(cues[0]!.text).toBe('Bip!');
+    expect(metadata.timestampMap).toEqual({ mpegts: 900000, local: 0 });
   });
 });

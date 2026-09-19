@@ -2,7 +2,7 @@ import type { StateAttrMap } from '@videojs/core';
 import { applyStateDataAttrs } from '@videojs/core/dom';
 import type { PropertyValues } from '@videojs/element';
 
-import { MediaElement } from './media-element';
+import { UIElement } from './ui-element';
 
 /** Shape that compound context values must satisfy for parts to consume. */
 export interface PartContextValue<State extends object> {
@@ -11,8 +11,8 @@ export interface PartContextValue<State extends object> {
 }
 
 /**
- * Abstract base for compound-component part elements that consume a parent
- * context and apply data attributes from `ctx.state` + `ctx.stateAttrMap`.
+ * Abstract base for compound-component part elements that consume a parent context and apply data attributes from
+ * `ctx.state` + `ctx.stateAttrMap`.
  *
  * Subclasses only need to declare the `consumer` property:
  *
@@ -23,12 +23,22 @@ export interface PartContextValue<State extends object> {
  * }
  * ```
  */
-export abstract class ContextPartElement<State extends object> extends MediaElement {
+export abstract class ContextPartElement<State extends object> extends UIElement {
   protected abstract readonly consumer: { value?: PartContextValue<State> | undefined };
+
+  override connectedCallback(): void {
+    super.connectedCallback();
+    this.#applyState();
+  }
 
   protected override update(_changed: PropertyValues): void {
     super.update(_changed);
+    this.#applyState();
+  }
+
+  #applyState(): void {
     const ctx = this.consumer.value;
+
     if (ctx) applyStateDataAttrs(this, ctx.state, ctx.stateAttrMap);
   }
 }

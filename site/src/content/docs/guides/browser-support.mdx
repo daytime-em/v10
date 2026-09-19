@@ -1,0 +1,133 @@
+---
+title: Browser support
+description: Browsers and rendering environments supported by Video.js 10, and what the stylesheets need from them
+---
+
+import BrowserSupportTable from '@/components/docs/BrowserSupportTable.astro';
+import DocsLink from '@/components/docs/DocsLink.astro';
+import FrameworkCase from '@/components/docs/FrameworkCase.astro';
+
+Video.js 10 supports the **latest two stable versions** of Chrome, Edge, Firefox, Safari, and Safari on iOS. This page shows the versions that means today, what the packaged skins need from a browser, and how to reach older ones.
+
+## Browser baseline
+
+The build reads the policy from a [browserslist](https://browsersl.ist) query in the repository, and this page resolves the same query when the docs are built:
+
+<BrowserSupportTable kind="browsers" />
+
+These are the versions we test in and fix bugs for. We build directly on the web platform, with [custom elements](https://developer.mozilla.org/en-US/docs/Web/API/Web_components/Using_custom_elements), [`@scope`](https://developer.mozilla.org/en-US/docs/Web/CSS/@scope), [container queries](https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_containment/Container_queries), and [anchor positioning](https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_anchor_positioning), and we do not hold a feature back to keep older versions working. Older versions often work anyway:
+
+<BrowserSupportTable kind="coverage" />
+
+## CSS requirements
+
+The packaged skins are generated CSS, and a handful of newer features hold a skin together. **Required** features have no fallback: without them the player shows no component styling, and `@scope` alone sets the floor. **Degrades** features lose one visual detail. **Has a fallback** features sit inside [`@supports`](https://developer.mozilla.org/en-US/docs/Web/CSS/@supports); anchor positioning falls back to positions computed in JavaScript.
+
+The table reads the first fully supporting version of each feature from [caniuse-lite](https://github.com/browserslist/caniuse-lite) when the docs build, and feature names link to [caniuse.com](https://caniuse.com/). The **effective floor** is the newest required version in each column.
+
+<BrowserSupportTable kind="requirements" />
+
+A few features have no caniuse entry. [`oklch()`](https://developer.mozilla.org/en-US/docs/Web/CSS/color_value/oklch) is required but older than the floor (Chrome 111, Firefox 113, Safari 15.4). [`light-dark()`](https://developer.mozilla.org/en-US/docs/Web/CSS/color_value/light-dark), [relative colors](https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_colors/Relative_colors), [`@property`](https://developer.mozilla.org/en-US/docs/Web/CSS/@property), and [`contrast-color()`](https://developer.mozilla.org/en-US/docs/Web/CSS/color_value/contrast-color) each degrade on their own; set `--media-accent-text-color` from <DocsLink slug="guides/customize-skins">Customize skins</DocsLink> if you support browsers without `contrast-color()`. [Firefox ESR](https://www.mozilla.org/en-US/firefox/enterprise/) releases older than 146 lack `@scope`, so the skins render unstyled there.
+
+The JavaScript has a lower floor: ES2022 syntax, with newer APIs feature-detected, so it runs in Chrome 102, Firefox 112, and Safari 16.4 or later. The stylesheet decides whether an older browser shows a working player.
+
+### Support older browsers
+
+To reach browsers below the floor, recompile the skin stylesheet with fallbacks. Only a stylesheet your build processes can be recompiled.
+
+<FrameworkCase frameworks={["react"]}>
+
+Skins are stylesheets you import, such as `@videojs/react/video/skin.css`, so your bundler's CSS pipeline already sees them and nothing else changes.
+
+</FrameworkCase>
+
+<FrameworkCase frameworks={["html"]}>
+
+Packaged HTML skins inline their CSS into JavaScript, so <DocsLink slug="guides/customize-skins" anchor="eject-and-edit-a-skin">eject the skin</DocsLink> first; the ejected `skin.css` is a file in your project. CDN bundles inline their CSS too, so a CDN player needs <DocsLink slug="guides/self-hosting">self-hosting</DocsLink> plus an eject.
+
+</FrameworkCase>
+
+[lightningcss](https://lightningcss.dev/transpilation.html) and [postcss-preset-env](https://preset-env.cssdb.org/) both read a browserslist query and add what those browsers lack: they flatten nesting and rewrite `:dir()`, range media queries, `light-dark()`, and `oklch()` in ordinary declarations, and add vendor prefixes. Neither rewrites `@scope` or `:scope`, so a small plugin flattens each block into descendant selectors prefixed with [`:where(root)`](https://developer.mozilla.org/en-US/docs/Web/CSS/:where), which adds no specificity. The PostCSS version, picked up by Vite, Next.js, and most bundlers from `postcss.config.mjs`:
+
+```bash
+npm install --save-dev postcss postcss-preset-env postcss-selector-parser
+```
+
+```js title="postcss.config.mjs"
+import presetEnv from 'postcss-preset-env';
+import selectorParser from 'postcss-selector-parser';
+
+/** Rewrite `@scope (<root>) { … }` into descendant selectors that older browsers understand. */
+function flattenScope() {
+  const rewrite = (selector, root) =>
+    selectorParser((selectors) => {
+      selectors.each((sel) => {
+        let referencesRoot = false;
+
+        sel.walk((node) => {
+          if (node.type === 'nesting' || (node.type === 'pseudo' && node.value === ':scope')) {
+            node.replaceWith(selectorParser.string({ value: root }));
+            referencesRoot = true;
+          }
+        });
+
+        if (!referencesRoot) {
+          sel.prepend(selectorParser.combinator({ value: ' ' }));
+          sel.prepend(selectorParser.string({ value: `:where(${root})` }));
+        }
+      });
+    }).processSync(selector);
+
+  return {
+    postcssPlugin: 'flatten-scope',
+    OnceExit(css) {
+      const scopes = [];
+      css.walkAtRules('scope', (atRule) => scopes.push(atRule));
+
+      // Innermost first, so a nested scope is flattened before its parent prefixes it.
+      for (const atRule of scopes.reverse()) {
+        const match = /^\(\s*(.+?)\s*\)\s*$/.exec(atRule.params);
+        if (!match || /\)\s*to\s*\(/.test(atRule.params)) continue;
+
+        atRule.walkRules((rule) => {
+          rule.selectors = rule.selectors.map((selector) => rewrite(selector.trim(), match[1]));
+        });
+        atRule.replaceWith(atRule.nodes);
+      }
+    },
+  };
+}
+flattenScope.postcss = true;
+
+export default {
+  plugins: [flattenScope(), presetEnv({ browsers: 'baseline widely available', stage: 2 })],
+};
+```
+
+The result renders in Chrome 111, Firefox 121, and Safari 16.4 or later, the floor [Tailwind CSS 4 documents](https://tailwindcss.com/docs/compatibility#browser-support), because `:has()`, `@container`, `@layer`, and `color-mix()` have no fallback. Flattening `@scope` trades scope proximity for source order; the packaged skins never nest a component inside itself, so the output matches. Run `npx browserslist "baseline widely available"` to see what the query resolves to today, or pick another query for your audience.
+
+## Rendering contexts
+
+### WebViews
+
+A WebView is a browser engine embedded inside a native app. WebViews on iOS ([WKWebView](https://developer.apple.com/documentation/webkit/wkwebview)) and Android ([Android WebView](https://developer.android.com/reference/android/webkit/WebView)) can behave differently from the full browser; autoplay policies, fullscreen APIs, and hardware acceleration can vary.
+
+Video.js 10 targets standard browser environments. If you embed a player inside a native app, test it on each platform and WebView version you support.
+
+### Progressive Web Apps
+
+Installed Progressive Web Apps (PWAs) use the browser engine, but their standalone display mode and platform policies can affect fullscreen, media sessions, and other browser integration. Test playback both in a browser tab and in the installed app.
+
+### Smart TVs and set-top boxes
+
+TV platforms run embedded browsers with limited standards support. Video.js 10's core is not tied to any specific platform, which makes future TV adapters possible, but TV is not a supported target today.
+
+### Server-side rendering
+
+Video.js components render valid markup on the server. Interactivity — state management, media playback, and event handling — requires the browser and kicks in after hydration.
+
+## Related guides
+
+- <DocsLink slug="guides/customize-skins">Customize skins</DocsLink>
+- <DocsLink slug="guides/installation">Installation</DocsLink>
+- <DocsLink slug="guides/bundlers">Bundlers</DocsLink>

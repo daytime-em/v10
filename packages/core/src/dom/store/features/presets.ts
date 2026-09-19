@@ -4,13 +4,14 @@ import type {
   LiveAudioFeatures,
   LiveVideoFeatures,
   VideoFeatures,
-} from '../../media/types';
+} from '../../player';
 import { audioTrackFeature } from './audio-track';
 import { bufferFeature } from './buffer';
 import { controlsFeature } from './controls';
 import { errorFeature } from './error';
 import { fullscreenFeature } from './fullscreen';
 import { liveFeature } from './live';
+import { metadataFeature } from './metadata';
 import { pipFeature } from './pip';
 import { playbackFeature } from './playback';
 import { playbackRateFeature } from './playback-rate';
@@ -36,6 +37,7 @@ export const videoFeatures: VideoFeatures = [
   controlsFeature,
   textTrackFeature,
   errorFeature,
+  metadataFeature,
 ];
 
 export const audioFeatures: AudioFeatures = [
@@ -46,16 +48,16 @@ export const audioFeatures: AudioFeatures = [
   sourceFeature,
   bufferFeature,
   errorFeature,
+  metadataFeature,
 ];
 
 // TODO: Add background video features (e.g., playback, source, buffer)
 export const backgroundFeatures: BackgroundFeatures = [];
 
 /**
- * Features for a live video player. Mirrors {@link videoFeatures} but drops
- * {@link playbackRateFeature} (not meaningful for live) and adds
- * {@link liveFeature} so store consumers can read `liveEdgeStart` and
- * `targetLiveWindow`.
+ * Features for a live video player. Mirrors {@link videoFeatures} but drops {@link playbackRateFeature} (not meaningful
+ * for live) along with {@link qualityFeature} and {@link audioTrackFeature}, and adds {@link liveFeature} so store
+ * consumers can read `liveEdgeStart` and `targetLiveWindow`.
  */
 export const liveVideoFeatures: LiveVideoFeatures = [
   playbackFeature,
@@ -70,13 +72,12 @@ export const liveVideoFeatures: LiveVideoFeatures = [
   textTrackFeature,
   errorFeature,
   liveFeature,
+  metadataFeature,
 ];
 
 /**
- * Features for a live audio player. Mirrors {@link audioFeatures} but drops
- * {@link playbackRateFeature} (not meaningful for live) and adds
- * {@link liveFeature} so store consumers can read `liveEdgeStart` and
- * `targetLiveWindow`.
+ * Features for a live audio player. Mirrors {@link audioFeatures} but drops {@link playbackRateFeature} (not meaningful
+ * for live) and adds {@link liveFeature} so store consumers can read `liveEdgeStart` and `targetLiveWindow`.
  */
 export const liveAudioFeatures: LiveAudioFeatures = [
   playbackFeature,
@@ -86,4 +87,5 @@ export const liveAudioFeatures: LiveAudioFeatures = [
   bufferFeature,
   errorFeature,
   liveFeature,
+  metadataFeature,
 ];

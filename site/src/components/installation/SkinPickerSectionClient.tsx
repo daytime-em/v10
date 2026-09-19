@@ -1,19 +1,19 @@
-import { useStore } from '@nanostores/react';
-import { useCase } from '@/stores/installation';
 import SkinPicker from './SkinPicker';
+import { useSelection } from './useSelection';
 
 export default function SkinPickerSection({ children }: { children: React.ReactNode }) {
-  const $useCase = useStore(useCase);
-
+  const $useCase = useSelection('useCase');
   // Hide for background-video use case
-  if ($useCase === 'background-video') {
-    return null;
-  }
+  if ($useCase === 'background-video') return null;
 
+  // The heading and intro render inside this island so the whole section can disappear together. The picker takes the
+  // same gap from its intro as the other pickers get from their ContentWidth frame.
   return (
     <>
       {children}
-      <SkinPicker />
+      <div className="mt-8">
+        <SkinPicker />
+      </div>
     </>
   );
 }

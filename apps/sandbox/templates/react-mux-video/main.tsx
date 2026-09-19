@@ -1,63 +1,62 @@
 import '@app/styles.css';
-import { LiveVideoProvider, VideoProvider } from '@app/shared/react/providers';
+import { Chapters } from '@app/shared/react/chapters';
+import { LiveVideoPlayer, VideoPlayer } from '@app/shared/react/players';
+import { SandboxI18nProvider } from '@app/shared/react/sandbox-i18n';
 import { VideoSkinComponent } from '@app/shared/react/skins';
-import { Storyboard } from '@app/shared/react/storyboard';
-import { useAutoplay } from '@app/shared/react/use-autoplay';
-import { useLoop } from '@app/shared/react/use-loop';
-import { useMuted } from '@app/shared/react/use-muted';
-import { usePlaceholder } from '@app/shared/react/use-placeholder';
-import { usePoster } from '@app/shared/react/use-poster';
-import { usePreload } from '@app/shared/react/use-preload';
-import { useSkin } from '@app/shared/react/use-skin';
-import { useSource } from '@app/shared/react/use-source';
-import { useStoryboard } from '@app/shared/react/use-storyboard';
-import { isLiveSource, SOURCES } from '@app/shared/sources';
-import type { Styling } from '@app/types';
+import { useSandbox } from '@app/shared/react/use-sandbox';
+import { getChapters, getPlaceholderSrc, getPosterSrc, isLiveSource, SOURCES } from '@app/shared/sources';
+import { GoogleCast } from '@videojs/react/extensions/google-cast';
+import { MuxData } from '@videojs/react/extensions/mux-data';
 import { MuxVideo } from '@videojs/react/media/mux-video';
-import { useMemo } from 'react';
 import { createRoot } from 'react-dom/client';
 
-function readStyling(): Styling {
-  return new URLSearchParams(location.search).get('styling') === 'tailwind' ? 'tailwind' : 'css';
-}
-
 function App() {
-  const skin = useSkin();
-  const source = useSource();
-  const styling = useMemo(readStyling, []);
-  const poster = usePoster();
-  const placeholder = usePlaceholder();
-  const storyboard = useStoryboard();
+  const { source, mediaProps } = useSandbox();
+  const placeholder = getPlaceholderSrc(source);
   const live = isLiveSource(source);
-  const autoplay = useAutoplay();
-  const muted = useMuted();
-  const loop = useLoop();
-  const preload = usePreload();
-  const Provider = live ? LiveVideoProvider : VideoProvider;
+  const Player = live ? LiveVideoPlayer : VideoPlayer;
+
+  // A source carrying signed tokens has no room in a plain `src`. A Mux
+  // `drm.token` becomes the FairPlay / Widevine / PlayReady license servers.
+  const { source: muxSource, url } = SOURCES[source];
 
   return (
-    <Provider>
-      <VideoSkinComponent
-        poster={poster}
-        placeholder={placeholder}
-        skin={skin}
-        styling={styling}
-        live={live}
-        className="aspect-video max-w-4xl mx-auto"
-      >
-        <MuxVideo
-          src={SOURCES[source].url}
-          autoPlay={autoplay}
-          muted={muted}
-          loop={loop}
-          preload={preload}
-          playsInline
-          crossOrigin="anonymous"
+    <SandboxI18nProvider>
+      <Player poster={getPosterSrc(source)}>
+        <VideoSkinComponent
+          renderPoster={
+            placeholder ? (
+              <img
+                alt=""
+                crossOrigin=""
+                style={{
+                  backgroundImage: `url("${placeholder}")`,
+                  backgroundPosition: 'var(--media-object-position, center)',
+                  backgroundRepeat: 'no-repeat',
+                  backgroundSize: 'contain',
+                }}
+              />
+            ) : undefined
+          }
+          // Replaces the skin's preview image so it can carry its own loading hints; the skin still fills in the frame.
+          renderThumbnail={<img alt="" decoding="async" fetchPriority="low" />}
+          live={live}
         >
-          <Storyboard src={storyboard} />
-        </MuxVideo>
-      </VideoSkinComponent>
-    </Provider>
+          {/* The storyboard track is derived automatically from the Mux src. */}
+          <MuxVideo
+            {...(muxSource ? { source: muxSource } : { src: url ?? '' })}
+            {...mediaProps}
+            playsInline
+            crossOrigin=""
+          >
+            <Chapters tracks={getChapters(source)} />
+          </MuxVideo>
+          {/* Mux Data and Cast are opt-in media components; no env key is needed for Mux-hosted sources. */}
+          <MuxData playerSoftwareName="mux-video" />
+          <GoogleCast />
+        </VideoSkinComponent>
+      </Player>
+    </SandboxI18nProvider>
   );
 }
 

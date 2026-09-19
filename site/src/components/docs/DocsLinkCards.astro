@@ -1,0 +1,11 @@
+---
+/**
+ * Lays consecutive `<DocsLinkCard>`s out as one two-column grid. Each card's own wrapper collapses to `display:
+ * contents`, so the links become direct grid items and share row heights.
+ */
+import Grid from '@/components/Grid.astro';
+---
+
+<Grid class="docs-link-cards mx-auto my-8 w-full max-w-3xl [&_.docs-link-card]:contents">
+  <slot />
+</Grid>

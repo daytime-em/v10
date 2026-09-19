@@ -2,7 +2,7 @@ import type { State, WritableState } from '@videojs/store';
 import { listen } from '@videojs/utils/dom';
 
 import type { TransitionState } from '../../core/ui/transition';
-import type { TransitionApi } from './transition';
+import type { TransitionApi, TransitionElement } from './transition';
 
 export interface DismissLayerOptions {
   /** Transition API for animated open/close. */
@@ -19,7 +19,7 @@ export interface DismissLayerApi {
   /** Reactive transition state for platforms to subscribe to. */
   input: State<TransitionState>;
   /** Start the open transition. Returns animation promise, or `null` if already open or destroyed. */
-  open(): Promise<void> | null;
+  open(element?: TransitionElement): Promise<void> | null;
   /** Start the close transition. Returns animation promise, or `null` if already closed or destroyed. */
   close(element: HTMLElement | null): Promise<void> | null;
   /** Lifecycle signal. Aborted on destroy. */
@@ -37,18 +37,17 @@ export function createDismissLayer(options: DismissLayerOptions): DismissLayerAp
 
   // --- Open/Close ---
 
-  function open(): Promise<void> | null {
+  function open(element?: TransitionElement): Promise<void> | null {
     if (abort.signal.aborted) return null;
 
     const { active, status } = state.current;
-
     if (active && status !== 'ending') return null;
 
     if (status === 'ending') {
       transition.cancel();
     }
 
-    return transition.open();
+    return transition.open(element);
   }
 
   function close(element: HTMLElement | null): Promise<void> | null {
@@ -79,7 +78,9 @@ export function createDismissLayer(options: DismissLayerOptions): DismissLayerAp
 
   function handleKeydown(event: KeyboardEvent): void {
     if (event.key !== 'Escape') return;
+
     if (event.defaultPrevented) return;
+
     if (!state.current.active) return;
 
     const shouldClose = options.closeOnEscape?.() ?? true;
@@ -91,7 +92,7 @@ export function createDismissLayer(options: DismissLayerOptions): DismissLayerAp
   // --- Lifecycle ---
 
   const unsubscribe = state.subscribe(() => {
-    if (state.current.active) {
+    if (state.current.active && state.current.status !== 'ending') {
       setupDocumentListeners();
     } else {
       cleanupDocumentListeners();
@@ -106,6 +107,7 @@ export function createDismissLayer(options: DismissLayerOptions): DismissLayerAp
 
   function destroy(): void {
     if (abort.signal.aborted) return;
+
     abort.abort();
   }
 

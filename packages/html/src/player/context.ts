@@ -1,6 +1,7 @@
-import type { AnyPlayerStore, Media, MediaContainer, PlayerStore, PopupGroup } from '@videojs/core/dom';
+import type { AnyPlayerStore, MediaContainer, PlayerStore } from '@videojs/core/dom';
 import type { ReactiveControllerHost } from '@videojs/element';
 import { type Context, type ContextConsumer, createContext } from '@videojs/element/context';
+import type { Media } from '@videojs/media/dom';
 
 // ----------------------------------------
 // Player Context
@@ -30,7 +31,7 @@ export const MEDIA_CONTEXT_KEY = Symbol.for('@videojs/media');
 
 export interface MediaContextValue {
   media: Media | null;
-  setMedia: (media: Media | null) => void;
+  registerMedia: (media: Media) => () => void;
 }
 
 export type MediaContext = Context<typeof MEDIA_CONTEXT_KEY, MediaContextValue>;
@@ -45,8 +46,7 @@ export const CONTAINER_CONTEXT_KEY = Symbol.for('@videojs/container');
 
 export interface ContainerContextValue {
   container: MediaContainer | null;
-  setContainer: (container: MediaContainer | null) => void;
-  popupGroup?: PopupGroup;
+  registerContainer: (container: MediaContainer) => () => void;
 }
 
 export type ContainerContext = Context<typeof CONTAINER_CONTEXT_KEY, ContainerContextValue>;

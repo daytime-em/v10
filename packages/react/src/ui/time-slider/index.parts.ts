@@ -12,4 +12,9 @@ export {
   Value,
   type ValueProps,
 } from '../slider/index.parts';
-export { TimeSliderRoot as Root, type TimeSliderRootProps as RootProps } from './time-slider-root';
+export {
+  TimeSliderChapterTitle as ChapterTitle,
+  type TimeSliderChapterTitleProps as ChapterTitleProps,
+} from './chapter-title';
+export { TimeSliderChapters as Chapters, type TimeSliderChaptersProps as ChaptersProps } from './chapters';
+export { TimeSliderRoot as Root, type TimeSliderRootProps as RootProps } from './root';

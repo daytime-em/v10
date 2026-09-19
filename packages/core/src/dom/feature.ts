@@ -1,49 +1,70 @@
-import { type AttachContext, defineSlice, type SliceConfig, type StateContext } from '@videojs/store';
-import { isUndefined } from '@videojs/utils/predicate';
+import type { DerivedContext, SliceConfig } from '@videojs/store';
 
-import type { PlayerFeature, PlayerTarget } from './media/types';
+import type { AnyPlayerFeature, PlayerFeature, PlayerFeatureConfig, PlayerTarget } from './player';
 
-export interface ConfigurablePlayerFeature<Config, State> extends PlayerFeature<State> {
-  (config?: Config): PlayerFeature<State>;
+type DerivedFunctions<State> = Record<string, (ctx: DerivedContext<State>) => unknown>;
+
+type DerivedValues<Definitions extends Record<string, (...args: any[]) => unknown>> = {
+  [Key in keyof Definitions]: ReturnType<Definitions[Key]>;
+};
+
+type PlayerFeatureDefinition<State, Derived, Config extends PlayerFeatureConfig> = Omit<
+  SliceConfig<PlayerTarget, State, Derived>,
+  'preserve'
+> & {
+  config?: Config;
+};
+
+/** Define a player feature with derived state and optional configuration inputs. */
+export function definePlayerFeature<
+  State,
+  const Definitions extends DerivedFunctions<State>,
+  const Config extends PlayerFeatureConfig = Record<never, never>,
+>(
+  definition: Omit<PlayerFeatureDefinition<State, DerivedValues<Definitions>, Config>, 'derived'> & {
+    derived: Definitions;
+  }
+): PlayerFeature<State, DerivedValues<Definitions>, Config>;
+/** Define a player feature with optional configuration inputs. */
+export function definePlayerFeature<State, const Config extends PlayerFeatureConfig = Record<never, never>>(
+  definition: Omit<PlayerFeatureDefinition<State, object, Config>, 'derived'> & { derived?: never }
+): PlayerFeature<State, object, Config>;
+export function definePlayerFeature<State>(
+  definition: PlayerFeatureDefinition<State, object, PlayerFeatureConfig>
+): PlayerFeature<State> {
+  const preserved = Object.values(definition.config ?? {}).map((entry) => entry.state);
+
+  return {
+    ...definition,
+    ...(preserved.length > 0 ? { preserve: preserved } : {}),
+  } as PlayerFeature<State>;
 }
 
-export interface ConfigurablePlayerFeatureConfig<Config, State>
-  extends Omit<SliceConfig<PlayerTarget, State>, 'attach' | 'state'> {
-  state: (ctx: StateContext<PlayerTarget>, config: Config) => State;
-  attach?: (ctx: AttachContext<PlayerTarget, State>, config: Config) => void;
-}
+/** Merge the configuration declarations from the selected player features. */
+export function combinePlayerFeatureConfigs(features: readonly AnyPlayerFeature[]): PlayerFeatureConfig {
+  const definitions = features.map((feature) => feature.config ?? {});
 
-const definePlayerSlice = defineSlice<PlayerTarget>();
+  if (__DEV__) {
+    const seen = new Set<string>();
 
-export function definePlayerFeature<State>(config: SliceConfig<PlayerTarget, State>): PlayerFeature<State>;
-export function definePlayerFeature<Config, State>(
-  config: ConfigurablePlayerFeatureConfig<Config, State>,
-  defaultConfig: Config
-): ConfigurablePlayerFeature<Config, State>;
-export function definePlayerFeature<Config, State>(
-  config: SliceConfig<PlayerTarget, State> | ConfigurablePlayerFeatureConfig<Config, State>,
-  defaultConfig?: Config
-): PlayerFeature<State> | ConfigurablePlayerFeature<Config, State> {
-  if (arguments.length === 1) {
-    return definePlayerSlice(config as SliceConfig<PlayerTarget, State>);
+    for (const definition of definitions) {
+      for (const key of Object.keys(definition)) {
+        if (seen.has(key)) {
+          console.warn(`[vjs-core] duplicate config key "${key}" — later feature overwrites earlier one`);
+        }
+
+        seen.add(key);
+      }
+    }
   }
 
-  const { name, state, attach } = config as ConfigurablePlayerFeatureConfig<Config, State>;
+  return Object.assign({}, ...definitions);
+}
 
-  const forConfig = (featureConfig: Config): PlayerFeature<State> =>
-    definePlayerSlice({
-      ...(isUndefined(name) ? {} : { name }),
-      state: (ctx) => state(ctx, featureConfig),
-      ...(attach ? { attach: (ctx) => attach(ctx, featureConfig) } : {}),
-    });
+/** Forward one configuration input through its feature-owned private action. */
+export function setPlayerConfigValue(store: object, entry: PlayerFeatureConfig[string], value: unknown): void {
+  const action = (store as Record<PropertyKey, unknown>)[entry.action];
+  if (typeof action !== 'function') throw new TypeError(`Missing config action "${String(entry.action)}"`);
 
-  const defaultFeature = forConfig(defaultConfig as Config);
-  const feature = ((featureConfig?: Config) =>
-    isUndefined(featureConfig) ? defaultFeature : forConfig(featureConfig)) as ConfigurablePlayerFeature<Config, State>;
-
-  feature.state = defaultFeature.state;
-  if (defaultFeature.attach) feature.attach = defaultFeature.attach;
-  if (!isUndefined(name)) Object.defineProperty(feature, 'name', { value: name });
-
-  return feature;
+  action(value);
 }

@@ -1,6 +1,7 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vite-plus/test';
+
 import type { Guide, Sidebar } from '../../../types/docs';
-import { resolveDocsLinkUrl, resolveFrameworkChange, resolveIndexRedirect } from '../routing';
+import { getFrameworkFromDocsPath, resolveDocsLinkUrl, resolveFrameworkChange, resolveIndexRedirect } from '../routing';
 
 // Mock the validation functions from @/types/docs to use mock framework/style configuration
 // Note: This mock is hoisted, so we define MOCK_FRAMEWORK_STYLES inside the factory
@@ -27,6 +28,7 @@ vi.mock('@/types/docs', async () => {
     // Mock isValidFramework to check against mock frameworks
     isValidFramework: (value: string | undefined | null): value is MockFramework => {
       if (!value) return false;
+
       return value === 'html' || value === 'react';
     },
   };
@@ -54,18 +56,18 @@ describe('routing utilities', () => {
   };
 
   const guideHtmlOnly: Guide = {
-    slug: 'how-to/html-only',
+    slug: 'guides/html-only',
     frameworks: ['html'] satisfies MockFramework[],
   };
 
   // Guide with no own restrictions, but lives inside a react-only section
   const guideInReactSection: Guide = {
-    slug: 'reference/react-hook',
+    slug: 'components/react-hook',
   };
 
   // Guide with no own restrictions, but lives inside an html-only section
   const guideInHtmlSection: Guide = {
-    slug: 'reference/html-controller',
+    slug: 'components/html-controller',
   };
 
   const mockSidebar: Sidebar = [
@@ -89,6 +91,19 @@ describe('routing utilities', () => {
     },
     guideHtmlOnly,
   ];
+
+  describe('getFrameworkFromDocsPath', () => {
+    it('returns the framework from an explicit docs route', () => {
+      expect(getFrameworkFromDocsPath('/docs/framework/react/guides/installation')).toBe('react');
+      expect(getFrameworkFromDocsPath('/docs/framework/html')).toBe('html');
+    });
+
+    it('ignores framework-agnostic and invalid routes', () => {
+      expect(getFrameworkFromDocsPath('/docs/guides/installation')).toBeNull();
+      expect(getFrameworkFromDocsPath('/docs/framework/vue/guides/installation')).toBeNull();
+      expect(getFrameworkFromDocsPath('/blog/framework/react')).toBeNull();
+    });
+  });
 
   describe('resolveIndexRedirect', () => {
     describe('with framework param', () => {
@@ -196,13 +211,13 @@ describe('routing utilities', () => {
         const result = resolveFrameworkChange(
           {
             currentFramework: 'html',
-            currentSlug: 'how-to/html-only',
+            currentSlug: 'guides/html-only',
             newFramework: 'react',
           },
           mockSidebar
         );
 
-        expect(result.selectedSlug).not.toBe('how-to/html-only');
+        expect(result.selectedSlug).not.toBe('guides/html-only');
         expect(result.slugChanged).toBe(true);
         expect(result.shouldReplace).toBe(false);
         expect(result.reason).toContain('changed slug');
@@ -212,13 +227,13 @@ describe('routing utilities', () => {
         const result = resolveFrameworkChange(
           {
             currentFramework: 'html',
-            currentSlug: 'reference/html-controller', // in html-only section
+            currentSlug: 'components/html-controller', // in html-only section
             newFramework: 'react',
           },
           mockSidebar
         );
 
-        expect(result.selectedSlug).not.toBe('reference/html-controller');
+        expect(result.selectedSlug).not.toBe('components/html-controller');
         expect(result.slugChanged).toBe(true);
         expect(result.shouldReplace).toBe(false);
       });
@@ -303,7 +318,7 @@ describe('routing utilities', () => {
       it('should fall back when guide inherits framework restriction from section', () => {
         const result = resolveDocsLinkUrl(
           {
-            targetSlug: 'reference/react-hook', // in react-only section, no own restriction
+            targetSlug: 'components/react-hook', // in react-only section, no own restriction
             contextFramework: 'html',
           },
           mockSidebar

@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vite-plus/test';
+
 import type { ContextSignals, StateSignals } from '../../../../core/composition/create-composition';
 import { signal } from '../../../../core/signals/primitives';
 import { resolveVttSegment } from '../../../../media/dom/text/resolve-vtt-segment';
@@ -24,6 +25,7 @@ interface TextTrackSegmentLoadingState {
   currentTime?: number;
   preload?: string;
   loadActivated?: boolean;
+  loadingSuspended?: boolean;
 }
 
 interface TextTrackSegmentLoadingContext {
@@ -42,6 +44,7 @@ vi.mock('../../../../media/dom/text/resolve-vtt-segment', () => ({
     if (url.includes('fail')) {
       return Promise.reject(new Error('Failed to load'));
     }
+
     return Promise.resolve([new VTTCue(0, 5, `Subtitle from ${url}`)]);
   }),
   destroyVttResolver: vi.fn(),
@@ -54,6 +57,7 @@ function makeState(initial: TextTrackSegmentLoadingState = {}): StateSignals<Tex
     currentTime: signal<number | undefined>(initial.currentTime),
     preload: signal<string | undefined>(initial.preload),
     loadActivated: signal<boolean | undefined>(initial.loadActivated),
+    loadingSuspended: signal<boolean | undefined>(initial.loadingSuspended),
   };
 }
 
@@ -112,12 +116,17 @@ function setupLoadTextTrackCues(initialState: TextTrackSegmentLoadingState, init
   // targeting dormant / activation behavior override this explicitly.
   const state = makeState({ preload: 'auto', ...initialState });
   const context = makeContext(initialContext);
-  const setupCleanup = setupTextTrackActors.setup({ context, config: { resolveTextTrackSegment: resolveVttSegment } });
+  const setupCleanup = setupTextTrackActors.setup({
+    state,
+    context,
+    config: { resolveTextTrackSegment: resolveVttSegment },
+  }) as () => void;
   const reactor = loadTextTrackSegments.setup({ state, context });
   const cleanup = () => {
     reactor.destroy();
     setupCleanup();
   };
+
   return { state, context, cleanup };
 }
 
@@ -129,8 +138,10 @@ describe('loadTextTrackSegments', () => {
   describe('cue deduplication', () => {
     function makeTrackWithPersistentCues() {
       const trackElement = document.createElement('track');
+
       trackElement.id = 'text-1';
       const video = document.createElement('video');
+
       video.appendChild(trackElement);
       trackElement.track.mode = 'hidden';
 
@@ -153,6 +164,7 @@ describe('loadTextTrackSegments', () => {
 
     it('adds all cues when there are no duplicates', async () => {
       const { resolveVttSegment } = await import('../../../../media/dom/text/resolve-vtt-segment');
+
       vi.mocked(resolveVttSegment)
         .mockResolvedValueOnce([new VTTCue(0, 5, 'Cue A')])
         .mockResolvedValueOnce([new VTTCue(5, 10, 'Cue B')])
@@ -167,6 +179,7 @@ describe('loadTextTrackSegments', () => {
         },
         { mediaElement: video }
       );
+
       await new Promise((resolve) => setTimeout(resolve, 50));
 
       expect(addCueSpy).toHaveBeenCalledTimes(3);
@@ -175,6 +188,7 @@ describe('loadTextTrackSegments', () => {
 
     it('drops a duplicate cue from a subsequent segment', async () => {
       const { resolveVttSegment } = await import('../../../../media/dom/text/resolve-vtt-segment');
+
       vi.mocked(resolveVttSegment)
         .mockResolvedValueOnce([new VTTCue(8, 12, 'Boundary cue')])
         .mockResolvedValueOnce([new VTTCue(8, 12, 'Boundary cue')]);
@@ -188,6 +202,7 @@ describe('loadTextTrackSegments', () => {
         },
         { mediaElement: video }
       );
+
       await new Promise((resolve) => setTimeout(resolve, 50));
 
       expect(addCueSpy).toHaveBeenCalledTimes(1);
@@ -196,6 +211,7 @@ describe('loadTextTrackSegments', () => {
 
     it('keeps cues with identical timing but different text', async () => {
       const { resolveVttSegment } = await import('../../../../media/dom/text/resolve-vtt-segment');
+
       vi.mocked(resolveVttSegment)
         .mockResolvedValueOnce([new VTTCue(0, 5, 'Hello')])
         .mockResolvedValueOnce([new VTTCue(0, 5, 'World')]);
@@ -209,6 +225,7 @@ describe('loadTextTrackSegments', () => {
         },
         { mediaElement: video }
       );
+
       await new Promise((resolve) => setTimeout(resolve, 50));
 
       expect(addCueSpy).toHaveBeenCalledTimes(2);
@@ -217,6 +234,7 @@ describe('loadTextTrackSegments', () => {
 
     it('handles mixed: boundary duplicate dropped, unique cues kept', async () => {
       const { resolveVttSegment } = await import('../../../../media/dom/text/resolve-vtt-segment');
+
       vi.mocked(resolveVttSegment)
         .mockResolvedValueOnce([new VTTCue(0, 8, 'Unique to seg 0'), new VTTCue(8, 12, 'Boundary cue')])
         .mockResolvedValueOnce([new VTTCue(8, 12, 'Boundary cue'), new VTTCue(12, 20, 'Unique to seg 1')]);
@@ -230,6 +248,7 @@ describe('loadTextTrackSegments', () => {
         },
         { mediaElement: video }
       );
+
       await new Promise((resolve) => setTimeout(resolve, 50));
 
       expect(addCueSpy).toHaveBeenCalledTimes(3);
@@ -243,6 +262,7 @@ describe('loadTextTrackSegments', () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
 
     const { resolveVttSegment } = await import('../../../../media/dom/text/resolve-vtt-segment');
+
     expect(resolveVttSegment).not.toHaveBeenCalled();
 
     cleanup();
@@ -250,8 +270,10 @@ describe('loadTextTrackSegments', () => {
 
   it('triggers loading for single segment', async () => {
     const trackElement = document.createElement('track');
+
     trackElement.id = 'text-1';
     const video = document.createElement('video');
+
     video.appendChild(trackElement);
     trackElement.track.mode = 'hidden';
 
@@ -266,6 +288,7 @@ describe('loadTextTrackSegments', () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
 
     const { resolveVttSegment } = await import('../../../../media/dom/text/resolve-vtt-segment');
+
     expect(resolveVttSegment).toHaveBeenCalledTimes(1);
     expect(resolveVttSegment).toHaveBeenCalledWith('https://example.com/segment-0.vtt');
 
@@ -274,8 +297,10 @@ describe('loadTextTrackSegments', () => {
 
   it('triggers loading for multiple segments', async () => {
     const trackElement = document.createElement('track');
+
     trackElement.id = 'text-1';
     const video = document.createElement('video');
+
     video.appendChild(trackElement);
     trackElement.track.mode = 'hidden';
 
@@ -290,6 +315,7 @@ describe('loadTextTrackSegments', () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
 
     const { resolveVttSegment } = await import('../../../../media/dom/text/resolve-vtt-segment');
+
     expect(resolveVttSegment).toHaveBeenCalledTimes(3);
     expect(resolveVttSegment).toHaveBeenNthCalledWith(1, 'https://example.com/segment-0.vtt');
     expect(resolveVttSegment).toHaveBeenNthCalledWith(2, 'https://example.com/segment-1.vtt');
@@ -300,8 +326,10 @@ describe('loadTextTrackSegments', () => {
 
   it('continues on segment error (partial loading)', async () => {
     const trackElement = document.createElement('track');
+
     trackElement.id = 'text-1';
     const video = document.createElement('video');
+
     video.appendChild(trackElement);
     trackElement.track.mode = 'hidden';
 
@@ -327,6 +355,7 @@ describe('loadTextTrackSegments', () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
 
     const { resolveVttSegment } = await import('../../../../media/dom/text/resolve-vtt-segment');
+
     expect(resolveVttSegment).toHaveBeenCalledTimes(3);
     expect(resolveVttSegment).toHaveBeenNthCalledWith(1, 'https://example.com/segment-0.vtt');
     expect(resolveVttSegment).toHaveBeenNthCalledWith(2, 'https://example.com/fail.vtt');
@@ -343,8 +372,10 @@ describe('loadTextTrackSegments', () => {
 
   it('does nothing when track not in presentation', async () => {
     const trackElement = document.createElement('track');
+
     trackElement.id = 'text-999';
     const video = document.createElement('video');
+
     video.appendChild(trackElement);
 
     const { cleanup } = setupLoadTextTrackCues(
@@ -358,6 +389,7 @@ describe('loadTextTrackSegments', () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
 
     const { resolveVttSegment } = await import('../../../../media/dom/text/resolve-vtt-segment');
+
     expect(resolveVttSegment).not.toHaveBeenCalled();
 
     cleanup();
@@ -366,8 +398,10 @@ describe('loadTextTrackSegments', () => {
   describe('forward buffer windowing', () => {
     function makeWindowingSetup(currentTime = 0) {
       const trackElement = document.createElement('track');
+
       trackElement.id = 'text-1';
       const video = document.createElement('video');
+
       video.appendChild(trackElement);
       trackElement.track.mode = 'hidden';
 
@@ -389,6 +423,7 @@ describe('loadTextTrackSegments', () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
 
       const { resolveVttSegment } = await import('../../../../media/dom/text/resolve-vtt-segment');
+
       expect(resolveVttSegment).toHaveBeenCalledTimes(3);
       expect(resolveVttSegment).toHaveBeenCalledWith('https://example.com/segment-0.vtt');
       expect(resolveVttSegment).toHaveBeenCalledWith('https://example.com/segment-1.vtt');
@@ -405,6 +440,7 @@ describe('loadTextTrackSegments', () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
 
       const { resolveVttSegment } = await import('../../../../media/dom/text/resolve-vtt-segment');
+
       expect(resolveVttSegment).toHaveBeenCalledTimes(3);
 
       state.currentTime.set(15);
@@ -426,6 +462,7 @@ describe('loadTextTrackSegments', () => {
 
       const { resolveVttSegment } = await import('../../../../media/dom/text/resolve-vtt-segment');
       const callsBefore = (resolveVttSegment as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
+
       expect(callsBefore).toContain('https://example.com/segment-0.vtt');
 
       state.currentTime.set(15);
@@ -434,6 +471,7 @@ describe('loadTextTrackSegments', () => {
       });
 
       const allCalls = (resolveVttSegment as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
+
       expect(allCalls.filter((u) => u === 'https://example.com/segment-0.vtt')).toHaveLength(1);
       expect(allCalls.filter((u) => u === 'https://example.com/segment-1.vtt')).toHaveLength(1);
       expect(allCalls.filter((u) => u === 'https://example.com/segment-2.vtt')).toHaveLength(1);
@@ -443,8 +481,10 @@ describe('loadTextTrackSegments', () => {
 
     it('fetches all segments immediately when the track fits in one window', async () => {
       const trackElement = document.createElement('track');
+
       trackElement.id = 'text-1';
       const video = document.createElement('video');
+
       video.appendChild(trackElement);
       trackElement.track.mode = 'hidden';
 
@@ -460,6 +500,7 @@ describe('loadTextTrackSegments', () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
 
       const { resolveVttSegment } = await import('../../../../media/dom/text/resolve-vtt-segment');
+
       expect(resolveVttSegment).toHaveBeenCalledTimes(3);
       expect(resolveVttSegment).toHaveBeenCalledWith('https://example.com/segment-0.vtt');
       expect(resolveVttSegment).toHaveBeenCalledWith('https://example.com/segment-1.vtt');
@@ -476,8 +517,10 @@ describe('loadTextTrackSegments', () => {
   describe('load-mode FSM', () => {
     function makeMountedTrack(id = 'text-1') {
       const trackElement = document.createElement('track');
+
       trackElement.id = id;
       const video = document.createElement('video');
+
       video.appendChild(trackElement);
       trackElement.track.mode = 'hidden';
       return video;
@@ -498,6 +541,7 @@ describe('loadTextTrackSegments', () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
 
       const { resolveVttSegment } = await import('../../../../media/dom/text/resolve-vtt-segment');
+
       expect(resolveVttSegment).not.toHaveBeenCalled();
 
       cleanup();
@@ -518,6 +562,7 @@ describe('loadTextTrackSegments', () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
 
       const { resolveVttSegment } = await import('../../../../media/dom/text/resolve-vtt-segment');
+
       expect(resolveVttSegment).not.toHaveBeenCalled();
 
       cleanup();
@@ -538,6 +583,7 @@ describe('loadTextTrackSegments', () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
 
       const { resolveVttSegment } = await import('../../../../media/dom/text/resolve-vtt-segment');
+
       expect(resolveVttSegment).toHaveBeenCalledTimes(2);
 
       cleanup();
@@ -559,6 +605,7 @@ describe('loadTextTrackSegments', () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
 
       const { resolveVttSegment } = await import('../../../../media/dom/text/resolve-vtt-segment');
+
       expect(resolveVttSegment).toHaveBeenCalledTimes(2);
 
       cleanup();
@@ -579,6 +626,7 @@ describe('loadTextTrackSegments', () => {
       await new Promise((resolve) => setTimeout(resolve, 50));
 
       const { resolveVttSegment } = await import('../../../../media/dom/text/resolve-vtt-segment');
+
       expect(resolveVttSegment).not.toHaveBeenCalled();
 
       state.loadActivated.set(true);
@@ -607,6 +655,7 @@ describe('loadTextTrackSegments', () => {
 
       const { resolveVttSegment } = await import('../../../../media/dom/text/resolve-vtt-segment');
       const callsAfterInitial = (resolveVttSegment as ReturnType<typeof vi.fn>).mock.calls.length;
+
       expect(callsAfterInitial).toBeGreaterThan(0);
 
       // Tick currentTime within segment 0 (boundary stays at 0). Loader
@@ -621,6 +670,60 @@ describe('loadTextTrackSegments', () => {
       expect((resolveVttSegment as ReturnType<typeof vi.fn>).mock.calls.length).toBe(callsAfterInitial);
 
       cleanup();
+    });
+  });
+
+  // Text loading has no structural tie to the MediaSource — the observed
+  // 'dormant' policy gate is the only thing that stops it (v/a loaders die
+  // with the closed MediaSource besides).
+  describe('loadingSuspended (observed dormant gate)', () => {
+    it('does not dispatch while suspended, even with preload="auto"', async () => {
+      const send = vi.fn();
+      const fakeLoader = { send } as unknown as TextTrackSegmentLoaderActor;
+      const state = makeState({
+        preload: 'auto',
+        loadingSuspended: true,
+        selectedTextTrackId: 'text-1',
+        currentTime: 0,
+        presentation: createMockPresentation([{ id: 'text-1', segments: createMockSegments(5) }]),
+      });
+      const context = makeContext({ textTrackSegmentLoaderActor: fakeLoader });
+      const reactor = loadTextTrackSegments.setup({ state, context });
+
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(send).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'load' }));
+
+      reactor.destroy();
+    });
+
+    it('parks while suspended and re-dispatches when the policy lifts', async () => {
+      // Fake loader captures the messages the dispatcher sends. Suspension
+      // is a policy 'dormant' — no stop message; queued work drains
+      // (text fetches are small and bounded), and the derive re-dispatches
+      // when the writer clears the slot.
+      const send = vi.fn();
+      const fakeLoader = { send } as unknown as TextTrackSegmentLoaderActor;
+      const state = makeState({
+        preload: 'auto',
+        selectedTextTrackId: 'text-1',
+        currentTime: 0,
+        presentation: createMockPresentation([{ id: 'text-1', segments: createMockSegments(5) }]),
+      });
+      const context = makeContext({ textTrackSegmentLoaderActor: fakeLoader });
+      const reactor = loadTextTrackSegments.setup({ state, context });
+
+      // preload:'auto' → 'full-range' → an initial load dispatch.
+      await vi.waitFor(() => expect(send).toHaveBeenCalledWith(expect.objectContaining({ type: 'load' })));
+      send.mockClear();
+
+      state.loadingSuspended.set(true);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(send).not.toHaveBeenCalled();
+
+      state.loadingSuspended.set(false);
+      await vi.waitFor(() => expect(send).toHaveBeenCalledWith(expect.objectContaining({ type: 'load' })));
+
+      reactor.destroy();
     });
   });
 });

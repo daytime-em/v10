@@ -1,9 +1,9 @@
-'use client';
-
 import { getStateDataAttrs, type StateAttrMap } from '@videojs/core/dom';
-import { isFunction } from '@videojs/utils/predicate';
-import type { CSSProperties, ReactElement, Ref } from 'react';
-import { cloneElement, createElement, isValidElement } from 'react';
+import { isFunction, isObject } from '@videojs/utils/predicate';
+import { resolveClassName } from '@videojs/utils/style';
+import type { CSSProperties, FunctionComponent, ReactElement, ReactNode, Ref } from 'react';
+import { cloneElement, createElement, forwardRef, isValidElement, memo, version } from 'react';
+
 import { mergeProps } from './merge-props';
 import type { HTMLProps, RenderProp } from './types';
 import { composeRefs } from './use-composed-refs';
@@ -28,13 +28,6 @@ export interface UseRenderParameters<State, RenderedElementType extends Element>
   stateAttrMap?: StateAttrMap<State> | undefined;
 }
 
-function resolveClassName<State>(
-  className: string | ((state: State) => string | undefined) | undefined,
-  state: State
-): string | undefined {
-  return isFunction(className) ? className(state) : className;
-}
-
 function resolveStyle<State>(
   style: CSSProperties | ((state: State) => CSSProperties | undefined) | undefined,
   state: State
@@ -46,28 +39,107 @@ function getElementRef(element: ReactElement): Ref<unknown> | undefined {
   // React 19+ uses element.props.ref, older versions use element.ref
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const elementAny = element as any;
+
   return elementAny.ref ?? elementAny.props?.ref;
+}
+
+/**
+ * React 19 passes `ref` to function components as a prop. React 18 and Preact compat only deliver it through
+ * `forwardRef`, so a plain function used as a render target needs wrapping there.
+ */
+const REF_AS_PROP = Number.parseInt(version, 10) >= 19;
+const REACT_MEMO_TYPE = Symbol.for('react.memo');
+
+/** What a React element's `type` can be: an intrinsic tag name or a component. */
+type ComponentOrTag = ReactElement['type'];
+type UnknownProps = Record<string, unknown>;
+
+/** The runtime shape of a `memo()` result. */
+interface MemoComponent {
+  readonly type: ComponentOrTag;
+  readonly compare?: ((prev: Readonly<UnknownProps>, next: Readonly<UnknownProps>) => boolean) | undefined;
+}
+
+/** Original component, or memo wrapper, to the ref-forwarding component created for it. */
+const refForwardingCache = new WeakMap<object, ComponentOrTag>();
+
+function isPlainFunctionComponent(type: unknown): type is FunctionComponent<UnknownProps> {
+  if (!isFunction(type) || '$$typeof' in type) return false;
+
+  const prototype: unknown = type.prototype;
+
+  return !(isObject(prototype) && 'isReactComponent' in prototype);
+}
+
+function isMemoComponent(type: unknown): type is object & MemoComponent {
+  return isObject(type) && '$$typeof' in type && type.$$typeof === REACT_MEMO_TYPE;
+}
+
+/** Wrap a plain function component in `forwardRef` so it receives `ref` inside its props, as it would on React 19. */
+function withForwardedRef(component: FunctionComponent<UnknownProps>): ComponentOrTag {
+  const cached = refForwardingCache.get(component);
+  if (cached) return cached;
+
+  const ForwardedComponent = forwardRef<unknown, UnknownProps>((props, ref) => {
+    // SAFETY: a render target is invoked synchronously during render, so it cannot be an async component.
+    return component({ ...props, ref }) as ReactNode;
+  });
+
+  if (__DEV__) ForwardedComponent.displayName = component.displayName ?? component.name;
+
+  refForwardingCache.set(component, ForwardedComponent);
+
+  return ForwardedComponent;
+}
+
+/**
+ * Resolve the type to create a render element with so the host's composed ref reaches it. Intrinsic tags, classes, and
+ * `forwardRef` components already accept refs. Plain function components, bare or wrapped in `memo`, only do on
+ * renderers with ref-as-prop and are wrapped otherwise.
+ */
+function ensureRefForwarding(type: ComponentOrTag): ComponentOrTag {
+  if (REF_AS_PROP) return type;
+
+  if (isPlainFunctionComponent(type)) return withForwardedRef(type);
+
+  if (!isMemoComponent(type) || !isPlainFunctionComponent(type.type)) return type;
+
+  const cached = refForwardingCache.get(type);
+  if (cached) return cached;
+
+  // SAFETY: the wrapper is a forwardRef component, which `memo` accepts wherever a function component is expected.
+  const forwarded = memo(withForwardedRef(type.type) as FunctionComponent<UnknownProps>, type.compare);
+
+  refForwardingCache.set(type, forwarded);
+
+  return forwarded;
+}
+
+function mergeRefs<T>(...refs: (Ref<T> | Ref<T>[] | undefined)[]): Ref<T> | undefined {
+  const flatRefs = refs.flat().filter((ref): ref is Ref<T> => ref !== null && ref !== undefined);
+  if (flatRefs.length === 0) return undefined;
+
+  if (flatRefs.length === 1) return flatRefs[0];
+
+  return composeRefs(...flatRefs);
 }
 
 /**
  * Render a UI component element.
  *
- * Handles:
- * - Default tag rendering
- * - Render prop (element or function)
- * - Props merging (event handlers chained, className concatenated, style merged)
- * - Ref composition
- * - className/style as functions of state
+ * Handles: - Default tag rendering - Render prop (element or function) - Props merging (event handlers chained,
+ * className concatenated, style merged) - Ref composition - className/style as functions of state
+ *
+ * @example
+ *   ```tsx
+ *   return renderElement('button', componentProps, {
+ *     state,
+ *     ref: [forwardedRef, buttonRef],
+ *     props: [{ type: 'button' }, elementProps, getButtonProps],
+ *   });
+ *   ```;
  *
  * @public
- * @example
- * ```tsx
- * return renderElement('button', componentProps, {
- *   state,
- *   ref: [forwardedRef, buttonRef],
- *   props: [{ type: 'button' }, elementProps, getButtonProps],
- * });
- * ```
  */
 export function renderElement<
   State extends object,
@@ -104,23 +176,31 @@ export function renderElement<
 
   if (isFunction(render)) {
     // Render function: call with props and state
-    const mergedRef = composeRefs(ref, mergedProps.ref);
+    const mergedRef = mergeRefs(ref, mergedProps.ref);
+
     return render({ ...mergedProps, ref: mergedRef } as HTMLProps, state);
   }
 
   if (isValidElement(render)) {
     const elementRef = getElementRef(render);
 
-    const mergedRef = composeRefs(ref, mergedProps.ref, elementRef);
+    const mergedRef = mergeRefs(ref, mergedProps.ref, elementRef);
 
     const elementProps = mergeProps(mergedProps, render.props as Record<string, unknown>);
+
     elementProps.ref = mergedRef;
 
-    return cloneElement(render, elementProps);
+    const type = ensureRefForwarding(render.type);
+    if (type === render.type) return cloneElement(render, elementProps);
+
+    if (render.key != null) elementProps.key = render.key;
+
+    return createElement(type, elementProps);
   }
 
   // Default tag
-  const mergedRef = composeRefs(ref, mergedProps.ref);
+  const mergedRef = mergeRefs(ref, mergedProps.ref);
+
   mergedProps.ref = mergedRef;
 
   return createElement(element, mergedProps);
