@@ -1,6 +1,6 @@
 import type { MediaPlaybackRateState } from '@videojs/media';
 import { isMediaPlaybackRateCapable } from '@videojs/media';
-import { listen } from '@videojs/utils/dom';
+import { listen } from '@videojs/utils/events';
 
 import { definePlayerFeature } from '../../feature';
 

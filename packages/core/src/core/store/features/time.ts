@@ -5,7 +5,7 @@ import {
   isMediaSourceCapable,
   type MediaTimeState,
 } from '@videojs/media';
-import { listen, onEvent } from '@videojs/utils/dom';
+import { listen, onEvent } from '@videojs/utils/events';
 import { noop } from '@videojs/utils/function';
 
 import { definePlayerFeature } from '../../feature';

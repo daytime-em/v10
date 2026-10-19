@@ -91,7 +91,7 @@ After agreement, align the implementation, examples, registration imports, styli
 
 ## Source references
 
-- [Metadata resolution](../packages/core/src/dom/store/features/metadata.ts)
+- [Metadata resolution](../packages/core/src/core/store/features/metadata.ts)
 - [Title state and empty behavior](../packages/core/src/core/ui/title/core.ts)
 - [Working HTML title root](../packages/html/src/ui/title/element.ts) and [React title root](../packages/react/src/ui/title/component.tsx)
 - [Skin composition](../packages/skins/src/components/metadata/title.tsx) and [title styles](../packages/skins/src/styles/metadata/title.styles.ts)

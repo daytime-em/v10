@@ -1,6 +1,6 @@
 import type { MediaPlaybackState } from '@videojs/media';
-import { isMediaPauseCapable, isMediaSeekCapable, isMediaSourceCapable } from '@videojs/media';
-import { listen } from '@videojs/utils/dom';
+import { isMediaPauseCapable, isMediaSeekCapable, isMediaSourceCapable, MediaReadyState } from '@videojs/media';
+import { listen } from '@videojs/utils/events';
 
 import { definePlayerFeature } from '../../feature';
 
@@ -45,7 +45,7 @@ export const playbackFeature = definePlayerFeature({
     let starvedAt: number | null = null;
 
     const sync = () => {
-      const starved = media.readyState < HTMLMediaElement.HAVE_FUTURE_DATA && !media.paused;
+      const starved = media.readyState < MediaReadyState.HAVE_FUTURE_DATA && !media.paused;
 
       if (!starved) starvedAt = null;
       else starvedAt ??= media.currentTime;

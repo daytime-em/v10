@@ -1,6 +1,6 @@
 import type { MediaSourceState } from '@videojs/media';
-import { isMediaSourceCapable } from '@videojs/media';
-import { listen } from '@videojs/utils/dom';
+import { isMediaSourceCapable, MediaReadyState } from '@videojs/media';
+import { listen } from '@videojs/utils/events';
 
 import { definePlayerFeature } from '../../feature';
 
@@ -29,7 +29,7 @@ export const sourceFeature = definePlayerFeature({
     const sync = () =>
       set({
         source: media.currentSrc || media.src || null,
-        canPlay: media.readyState >= HTMLMediaElement.HAVE_ENOUGH_DATA,
+        canPlay: media.readyState >= MediaReadyState.HAVE_ENOUGH_DATA,
       });
 
     sync();
