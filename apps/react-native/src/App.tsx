@@ -2,6 +2,8 @@ import { Player, type PlayerStatus, type ReactNativeMedia, Video, VideoPlayer, V
 import { useEffect, useRef, useState } from 'react';
 import { Button, ScrollView, StatusBar, StyleSheet, Text, useColorScheme, View } from 'react-native';
 
+import { MediaRuntimeProbe } from './MediaRuntimeProbe';
+
 const SOURCE_LIVE = 'https://stream.mux.com/v69RSHhFelSm4701snP22dYz2jICy4E4FUyk02rW4gxRM.m3u8';
 
 // warning - this asset's encoding doesn't work well in android emulator, but that's just an emulator quirk. It works fine on a real device.
@@ -138,6 +140,7 @@ export default function App() {
       <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor={theme.background} />
       <ScrollView style={{ backgroundColor: theme.background }} contentContainerStyle={styles.container}>
         <Text style={[styles.title, { color: theme.text }]}>@videojs/react-native</Text>
+        <MediaRuntimeProbe textColor={theme.text} mutedColor={theme.textMuted} />
         <SkinnedPlayer />
       </ScrollView>
     </>

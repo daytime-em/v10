@@ -305,6 +305,9 @@ importers:
 
   apps/react-native:
     dependencies:
+      '@videojs/media':
+        specifier: workspace:*
+        version: link:../../packages/media
       '@videojs/react-native':
         specifier: workspace:*
         version: link:../../packages/react-native

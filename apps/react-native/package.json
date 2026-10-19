@@ -14,6 +14,7 @@
     "postinstall": "node scripts/hoist-gradle-plugin.mjs"
   },
   "dependencies": {
+    "@videojs/media": "workspace:*",
     "@videojs/react-native": "workspace:*",
     "react": "19.2.8",
     "react-native": "0.86.2"
