@@ -97,7 +97,7 @@ export {
 export { supportsAnchorPositioning, supportsAnimationFrame, supportsIdleCallback } from './supports';
 export { cloneTemplateRoot, createTemplate, getTemplateElement, getTemplateRoot, renderTemplate } from './template';
 export { type CaptionOrSubtitleKind, findTrackElement, getTextTrackList, isCaptionOrSubtitleTrack } from './text-track';
-export { serializeTimeRanges } from './time-ranges';
+export { serializeTimeRanges } from '../time/ranges';
 export { containsComposed } from './tree';
 export type { CustomElement, CustomElementCallbacks, EventListenerFor, EventType, QueriedElement } from './types';
 export { type WalkAncestorsOptions, walkAncestors } from './walk-ancestors';

@@ -1,10 +1,10 @@
 import { combine, createStore } from '@videojs/store';
 import { describe, expect, it, vi } from 'vite-plus/test';
 
+import { sourceFeature } from '../../../../core/store/features/source';
+import { timeFeature } from '../../../../core/store/features/time';
 import type { PlayerTarget } from '../../../player';
 import { createMockVideo } from '../../../tests/test-helpers';
-import { sourceFeature } from '../source';
-import { timeFeature } from '../time';
 
 describe('sourceFeature', () => {
   describe('attach', () => {

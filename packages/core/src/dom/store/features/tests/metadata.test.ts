@@ -2,10 +2,10 @@ import type { MediaContentData, MediaContentValue } from '@videojs/media';
 import { createStore } from '@videojs/store';
 import { describe, expect, it, vi } from 'vite-plus/test';
 
+import { metadataFeature } from '../../../../core/store/features/metadata';
 import { setPlayerConfigValue } from '../../../feature';
 import type { PlayerTarget } from '../../../player';
 import { selectMetadata } from '../../selectors';
-import { metadataFeature } from '../metadata';
 import { audioFeatures, backgroundFeatures, liveAudioFeatures, liveVideoFeatures, videoFeatures } from '../presets';
 
 const titleConfig = metadataFeature.config!.title;
